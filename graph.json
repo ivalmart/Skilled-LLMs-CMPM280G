@@ -1,0 +1,370 @@
+{
+  "name": "lakitu",
+  "description": "Procgen Knowledge System — structured pipeline ensuring LLMs use proper PCG techniques instead of generate-and-test",
+  "node_types": {
+    "stage":     { "label": "Pipeline Stage",   "color": "#3fb950" },
+    "skill":     { "label": "Skill / Script",   "color": "#d29922" },
+    "baml_func": { "label": "BAML Function",    "color": "#bc8cff" },
+    "baml_type": { "label": "BAML Type",        "color": "#79c0ff" },
+    "state":     { "label": "State / Memory",   "color": "#f78166" },
+    "source":    { "label": "Knowledge Source",  "color": "#56d4dd" },
+    "external":  { "label": "External Tool",    "color": "#8b949e" },
+    "hook":      { "label": "Hook",             "color": "#f85149" },
+    "agent":     { "label": "Sub-Agent",        "color": "#db61a2" },
+    "artifact":  { "label": "Output Artifact",  "color": "#7ee787" }
+  },
+  "edge_types": {
+    "flow":      { "label": "Data Flow",     "color": "#58a6ff", "dash": false },
+    "calls":     { "label": "Invokes",       "color": "#bc8cff", "dash": false },
+    "reads":     { "label": "Reads",         "color": "#3fb950", "dash": false },
+    "writes":    { "label": "Writes",        "color": "#d29922", "dash": false },
+    "produces":  { "label": "Produces",      "color": "#7ee787", "dash": false },
+    "uses":      { "label": "Uses",          "color": "#8b949e", "dash": false },
+    "evolves":   { "label": "Evolved Into",  "color": "#8b949e", "dash": true },
+    "motivated": { "label": "Motivated",     "color": "#f85149", "dash": true },
+    "triggers":  { "label": "Triggers",      "color": "#d29922", "dash": true }
+  },
+  "nodes": [
+    {
+      "id": "user_request",
+      "label": "User Request",
+      "type": "stage",
+      "description": "Natural language procgen request. E.g. '10x10 dungeon, walls, gem before altar'",
+      "layer": 0, "col": 0
+    },
+    {
+      "id": "procgen_skill",
+      "label": "/procgen",
+      "type": "skill",
+      "description": "Slash command entry point. Defined in .claude/skills/procgen/SKILL.md. Invokes pipeline.py with user arguments.",
+      "file": ".claude/skills/procgen/SKILL.md",
+      "layer": 1, "col": 0
+    },
+    {
+      "id": "pipeline",
+      "label": "pipeline.py",
+      "type": "skill",
+      "description": "Main orchestrator. Coordinates decompose, search, verify, extract, memory, and emit stages. All paths flow through here.",
+      "file": ".claude/skills/procgen/scripts/pipeline.py",
+      "layer": 2, "col": 0
+    },
+    {
+      "id": "decompose",
+      "label": "Decompose",
+      "type": "stage",
+      "description": "Stage 1: Analyzes user request into a typed ProcgenProblem — output structure, constraint list, scale, realtime flag.",
+      "file": ".claude/skills/procgen/scripts/decompose.py",
+      "layer": 3, "col": -1
+    },
+    {
+      "id": "memory_lookup",
+      "label": "Memory Lookup",
+      "type": "stage",
+      "description": "Stage 2: Searches techniques.md for cached technique cards. Scores by overlap of problem_types and constraint_types. Hit (score >= 0.5) skips to selection.",
+      "file": ".claude/skills/procgen/scripts/memory.py",
+      "layer": 3, "col": 1
+    },
+    {
+      "id": "corpus_search",
+      "label": "Corpus Search",
+      "type": "stage",
+      "description": "Stage 3a (on miss): Vector similarity search over local pre-trusted corpus using sentence-transformers. Results are LOCAL_CORPUS / TIMELESS — skip source verification.",
+      "file": ".claude/skills/procgen/scripts/corpus_search.py",
+      "layer": 4, "col": -1
+    },
+    {
+      "id": "web_search",
+      "label": "Web Search",
+      "type": "stage",
+      "description": "Stage 3b (on miss): Searches Jina API, fetches top 5 results via r.jina.ai reader. Results go through source verification.",
+      "file": ".claude/skills/procgen/scripts/search.py",
+      "layer": 4, "col": 1
+    },
+    {
+      "id": "source_verify",
+      "label": "Verify Sources",
+      "type": "stage",
+      "description": "Stage 3.5: Classifies each web source by category (ACADEMIC, TUTORIAL, BLOG_UNKNOWN...) and freshness (CURRENT, TIMELESS, STALE). Filters out untrustworthy sources.",
+      "file": ".claude/skills/procgen/scripts/verify_source.py",
+      "layer": 5, "col": 1
+    },
+    {
+      "id": "technique_extract",
+      "label": "Extract Techniques",
+      "type": "stage",
+      "description": "Stage 4: Extracts structured TechniqueCard from each verified source — name, constraint types, implementation pattern, fingerprint, anti-patterns.",
+      "file": ".claude/skills/procgen/scripts/extract.py",
+      "layer": 6, "col": 0
+    },
+    {
+      "id": "memory_write",
+      "label": "Write to Memory",
+      "type": "stage",
+      "description": "Stage 5: Appends new technique cards to techniques.md as structured markdown sections. Memory grows across sessions.",
+      "layer": 7, "col": -1
+    },
+    {
+      "id": "technique_select",
+      "label": "Select Technique",
+      "type": "stage",
+      "description": "Stage 6: Scores all known techniques by constraint overlap with the decomposed problem. Best match is selected.",
+      "layer": 7, "col": 1
+    },
+    {
+      "id": "emit",
+      "label": "Emit",
+      "type": "stage",
+      "description": "Stage 6.5: Writes active.json (hook state with fingerprint, anti-patterns, 600s TTL) and outputs the technique card for code synthesis.",
+      "layer": 8, "col": 0
+    },
+    {
+      "id": "code_synth",
+      "label": "Code Synthesis",
+      "type": "stage",
+      "description": "Stage 7: Claude adapts the technique card's implementation pattern to the user's specific requirements. Receives concrete working code, not descriptions.",
+      "layer": 9, "col": 0
+    },
+    {
+      "id": "verification",
+      "label": "Verification",
+      "type": "stage",
+      "description": "Stage 8: PostToolUse hook fires on Write/Edit. Checks generated code for fingerprint signals and anti-patterns. Blocks code that falls back to generate-and-test.",
+      "layer": 10, "col": 0
+    },
+    {
+      "id": "fn_decompose",
+      "label": "DecomposeProblem()",
+      "type": "baml_func",
+      "description": "BAML function: request string -> ProcgenProblem. Runs on Haiku via OpenRouter.",
+      "file": "baml_src/functions.baml",
+      "layer": 3, "col": -3
+    },
+    {
+      "id": "fn_verify_src",
+      "label": "VerifySource()",
+      "type": "baml_func",
+      "description": "BAML function: (url, title, snippet) -> Source. Classifies source category and freshness.",
+      "file": "baml_src/functions.baml",
+      "layer": 5, "col": -3
+    },
+    {
+      "id": "fn_extract",
+      "label": "ExtractTechnique()",
+      "type": "baml_func",
+      "description": "BAML function: (content, url, problem) -> TechniqueCard. Extracts technique with implementation patterns.",
+      "file": "baml_src/functions.baml",
+      "layer": 6, "col": -3
+    },
+    {
+      "id": "fn_verify_tech",
+      "label": "VerifyTechnique()",
+      "type": "baml_func",
+      "description": "BAML function: (code, technique, fingerprint, anti_patterns) -> TechniqueVerification. Pass/fail check.",
+      "file": "baml_src/functions.baml",
+      "layer": 10, "col": -3
+    },
+    {
+      "id": "t_problem",
+      "label": "ProcgenProblem",
+      "type": "baml_type",
+      "description": "Typed struct: output_structure (GRID_2D|GRAPH|TREE|SEQUENCE|MESH_3D), constraints[] (name + ConstraintType + description), scale, realtime.",
+      "file": "baml_src/types.baml",
+      "layer": 3, "col": -5
+    },
+    {
+      "id": "t_card",
+      "label": "TechniqueCard",
+      "type": "baml_type",
+      "description": "Typed struct: name, category[], problem_types[], constraint_types[], description, tradeoffs[], implementation (language, deps, pattern, complexity), sources[], fingerprint (imports, artifacts, patterns), anti_patterns[], confidence.",
+      "file": "baml_src/types.baml",
+      "layer": 6, "col": -5
+    },
+    {
+      "id": "t_source",
+      "label": "Source",
+      "type": "baml_type",
+      "description": "Typed struct: url, domain, title, category (ACADEMIC|TUTORIAL|BLOG_UNKNOWN|...), freshness (CURRENT|TIMELESS|STALE|...), signals[], should_use.",
+      "file": "baml_src/types.baml",
+      "layer": 5, "col": -5
+    },
+    {
+      "id": "t_verify",
+      "label": "TechniqueVerification",
+      "type": "baml_type",
+      "description": "Typed struct: uses_technique (bool), evidence[], anti_patterns_found[], defaulted_to. The hook's decision structure.",
+      "file": "baml_src/types.baml",
+      "layer": 10, "col": -5
+    },
+    {
+      "id": "techniques_md",
+      "label": "techniques.md",
+      "type": "state",
+      "description": "Self-populating knowledge memory. Starts empty, grows each session. Structured markdown with ## headers parseable back into dicts. Currently holds: ASP technique.",
+      "file": ".claude/knowledge/techniques.md",
+      "layer": 5, "col": 3
+    },
+    {
+      "id": "active_json",
+      "label": "active.json",
+      "type": "state",
+      "description": "Transient hook communication state. Contains selected technique name, fingerprint, anti-patterns, implementation pattern. Expires after 600 seconds.",
+      "file": ".claude/skills/procgen_state/active.json",
+      "layer": 9, "col": 3
+    },
+    {
+      "id": "corpus_index",
+      "label": "corpus_index.pkl",
+      "type": "state",
+      "description": "Pickle file containing sentence-transformer embeddings for all indexed corpus documents. Model: multi-qa-MiniLM-L6-dot-v1.",
+      "file": ".claude/rlm_state/corpus_index.pkl",
+      "layer": 4, "col": 3
+    },
+    {
+      "id": "haiku",
+      "label": "Haiku",
+      "type": "external",
+      "description": "Claude Haiku 4.5 via OpenRouter. The 'small model that can run on your phone.' All four BAML functions use this — never the main model.",
+      "layer": 7, "col": -5
+    },
+    {
+      "id": "jina",
+      "label": "Jina API",
+      "type": "external",
+      "description": "s.jina.ai for web search, r.jina.ai for URL-to-markdown reader. Requires JINA_API_KEY.",
+      "layer": 4, "col": 4
+    },
+    {
+      "id": "clingo",
+      "label": "clingo",
+      "type": "external",
+      "description": "ASP (Answer Set Programming) solver. The actual constraint solver used in the generated dungeon.py. Guarantees all constraints are satisfied.",
+      "layer": 11, "col": 1
+    },
+    {
+      "id": "sentence_tf",
+      "label": "MiniLM",
+      "type": "external",
+      "description": "sentence-transformers model (multi-qa-MiniLM-L6-dot-v1). Embeds corpus documents and queries for vector similarity search.",
+      "layer": 4, "col": 5
+    },
+    {
+      "id": "verify_hook",
+      "label": "verify_procgen.py",
+      "type": "hook",
+      "description": "PostToolUse hook registered in .claude/settings.json. Fires on every Write or Edit of a .py file. Reads active.json, calls VerifyTechnique. Exit 1 blocks the write.",
+      "file": ".claude/hooks/verify_procgen.py",
+      "layer": 10, "col": 3
+    },
+    {
+      "id": "rlm_subcall",
+      "label": "rlm-subcall",
+      "type": "agent",
+      "description": "Haiku sub-agent (Read tool only). The sub-LM in the RLM pattern. Receives a chunk + query, returns compact JSON with relevant points. Maps to llm_query in the RLM paper.",
+      "file": ".claude/agents/rlm-subcall.md",
+      "layer": 8, "col": 5
+    },
+    {
+      "id": "dungeon",
+      "label": "dungeon.py",
+      "type": "artifact",
+      "description": "The working output. Uses clingo ASP solver directly — inline AnsProlog program encoding all constraints. BFS verification as sanity check. ANSI terminal visualization. Zero generate-and-test.",
+      "file": "dungeon.py",
+      "layer": 11, "col": -1
+    },
+    {
+      "id": "first_dungeon",
+      "label": "gen-and-test",
+      "type": "artifact",
+      "description": "first_attempt/dungeon.py — Session 0. Pure generate-and-test: random walls, BFS validation, while attempts < 100. The baseline failure mode lakitu is designed to prevent.",
+      "file": "first_attempt/claude_code_RLM/dungeon.py",
+      "layer": 12, "col": -3
+    },
+    {
+      "id": "rlm_dungeon",
+      "label": "hybrid fail",
+      "type": "artifact",
+      "description": "first_attempt/rlm_dungeon.py — 'ASP-inspired' but still generate-and-test (for attempt in range(1000)). Mimics constraint logic in Python without the solver. The exact failure the PostToolUse hook catches.",
+      "file": "first_attempt/claude_code_RLM/rlm_dungeon.py",
+      "layer": 12, "col": -1
+    },
+    {
+      "id": "rlm_skill",
+      "label": "/rlm",
+      "type": "skill",
+      "description": "RLM pattern for processing contexts too large to fit in a window. Chunks structured data, delegates each chunk to rlm-subcall agent, synthesizes results. Activates when techniques.md grows past context limits.",
+      "file": ".claude/skills/rlm/SKILL.md",
+      "layer": 7, "col": 5
+    },
+    {
+      "id": "rlm_repl",
+      "label": "rlm_repl.py",
+      "type": "skill",
+      "description": "Persistent Python REPL with pickle state. Commands: init, exec, export-buffers. Provides peek(), grep(), chunk_indices(), write_chunks() helpers. The 'external environment' in the RLM paper analogy.",
+      "file": ".claude/skills/rlm/scripts/rlm_repl.py",
+      "layer": 8, "col": 4
+    },
+    {
+      "id": "corpus_asp",
+      "label": "ASP.txt",
+      "type": "source",
+      "description": "Chapter 8 of PCG in Games textbook by Nelson & Smith. Covers ASP for maze/level generation. The pre-trusted local corpus document that seeded the first technique card.",
+      "file": "corpus/indexed/ASP.txt",
+      "layer": 3, "col": 3
+    }
+  ],
+  "edges": [
+    { "source": "user_request",     "target": "procgen_skill",    "type": "flow",     "label": "invokes" },
+    { "source": "procgen_skill",    "target": "pipeline",         "type": "flow",     "label": "runs" },
+    { "source": "pipeline",         "target": "decompose",        "type": "flow",     "label": "step 1" },
+    { "source": "pipeline",         "target": "memory_lookup",    "type": "flow",     "label": "step 2" },
+    { "source": "memory_lookup",    "target": "corpus_search",    "type": "flow",     "label": "cache miss" },
+    { "source": "memory_lookup",    "target": "technique_select", "type": "flow",     "label": "cache hit" },
+    { "source": "pipeline",         "target": "web_search",       "type": "flow",     "label": "step 3" },
+    { "source": "corpus_search",    "target": "technique_extract","type": "flow",     "label": "pre-trusted" },
+    { "source": "web_search",       "target": "source_verify",    "type": "flow",     "label": "raw results" },
+    { "source": "source_verify",    "target": "technique_extract","type": "flow",     "label": "verified only" },
+    { "source": "technique_extract","target": "memory_write",     "type": "flow",     "label": "new cards" },
+    { "source": "memory_write",     "target": "technique_select", "type": "flow" },
+    { "source": "technique_select", "target": "emit",             "type": "flow",     "label": "best match" },
+    { "source": "emit",             "target": "code_synth",       "type": "flow",     "label": "technique card" },
+    { "source": "code_synth",       "target": "verification",     "type": "flow",     "label": "generated code" },
+    { "source": "verification",     "target": "dungeon",          "type": "produces", "label": "pass" },
+    { "source": "verification",     "target": "code_synth",       "type": "motivated","label": "fail: re-prompt" },
+
+    { "source": "decompose",        "target": "fn_decompose",     "type": "calls" },
+    { "source": "source_verify",    "target": "fn_verify_src",    "type": "calls" },
+    { "source": "technique_extract","target": "fn_extract",       "type": "calls" },
+    { "source": "verification",     "target": "fn_verify_tech",   "type": "calls" },
+
+    { "source": "fn_decompose",     "target": "t_problem",        "type": "produces" },
+    { "source": "fn_verify_src",    "target": "t_source",         "type": "produces" },
+    { "source": "fn_extract",       "target": "t_card",           "type": "produces" },
+    { "source": "fn_verify_tech",   "target": "t_verify",         "type": "produces" },
+
+    { "source": "fn_decompose",     "target": "haiku",            "type": "calls",    "label": "via OpenRouter" },
+    { "source": "fn_verify_src",    "target": "haiku",            "type": "calls" },
+    { "source": "fn_extract",       "target": "haiku",            "type": "calls" },
+    { "source": "fn_verify_tech",   "target": "haiku",            "type": "calls" },
+
+    { "source": "memory_lookup",    "target": "techniques_md",    "type": "reads" },
+    { "source": "memory_write",     "target": "techniques_md",    "type": "writes" },
+    { "source": "emit",             "target": "active_json",      "type": "writes" },
+    { "source": "verify_hook",      "target": "active_json",      "type": "reads" },
+    { "source": "corpus_search",    "target": "corpus_index",     "type": "reads" },
+    { "source": "corpus_search",    "target": "corpus_asp",       "type": "reads" },
+
+    { "source": "web_search",       "target": "jina",             "type": "calls" },
+    { "source": "corpus_index",     "target": "sentence_tf",      "type": "uses" },
+    { "source": "dungeon",          "target": "clingo",           "type": "uses" },
+
+    { "source": "verify_hook",      "target": "verification",     "type": "calls",    "label": "implements" },
+
+    { "source": "first_dungeon",    "target": "rlm_dungeon",      "type": "evolves",  "label": "added constraints" },
+    { "source": "rlm_dungeon",      "target": "dungeon",          "type": "evolves",  "label": "replaced with ASP" },
+    { "source": "rlm_dungeon",      "target": "verify_hook",      "type": "motivated","label": "this failure motivated the hook" },
+
+    { "source": "techniques_md",    "target": "rlm_skill",        "type": "triggers", "label": "when memory grows large" },
+    { "source": "rlm_skill",        "target": "rlm_repl",         "type": "calls" },
+    { "source": "rlm_repl",         "target": "rlm_subcall",      "type": "calls",    "label": "per chunk" }
+  ]
+}

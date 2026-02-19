@@ -1,0 +1,14 @@
+{
+  "PostToolUse": [
+    {
+      "matcher": "Write|Edit",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "python .claude/hooks/verify_procgen.py",
+          "timeout": 30000
+        }
+      ]
+    }
+  ]
+}

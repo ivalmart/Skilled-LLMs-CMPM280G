@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>lakitu</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700&family=Lexend:wght@300;400;500;600&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0c1018;
+  --card: #141a24;
+  --raised: #1a2130;
+  --accent: #e8a838;
+  --accent-dim: rgba(232,168,56,0.12);
+  --teal: #5eead4;
+  --teal-dim: rgba(94,234,212,0.08);
+  --text: #e0dbd3;
+  --text-dim: #6b6960;
+  --border: #252d3a;
+  --success: #34d399;
+  --success-dim: rgba(52,211,153,0.1);
+  --error: #f87171;
+  --error-dim: rgba(248,113,113,0.1);
+  --purple: #a78bfa;
+  --orange: #fb923c;
+  --code-bg: #0a0e14;
+  --trace: #6b5c3e;
+  --trace-hi: #e8a838;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background: var(--bg); color: var(--text);
+  font-family: 'Lexend', sans-serif; font-weight: 400;
+  height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+}
+
+/* ── HEADER ── */
+header {
+  padding: 10px 24px; background: var(--card);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 16px; flex-shrink: 0; z-index: 10;
+}
+.brand {
+  font-family: 'Bricolage Grotesque', sans-serif;
+  font-weight: 700; font-size: 20px; color: var(--accent); letter-spacing: .5px;
+}
+.steps { display: flex; gap: 5px; }
+.sdot {
+  width: 28px; height: 28px; border-radius: 50%;
+  border: 2px solid var(--border); background: transparent;
+  color: var(--text-dim); font-family: 'Fira Code', monospace; font-size: 10px;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: all .3s;
+}
+.sdot:hover { border-color: var(--text-dim); }
+.sdot.active { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+.sdot.done { border-color: var(--success); color: var(--success); background: var(--success-dim); }
+.sdot { position: relative; }
+.sdot .tip {
+  position: absolute; top: 38px; left: 50%; transform: translateX(-50%);
+  background: var(--raised); border: 1px solid var(--border); border-radius: 6px;
+  padding: 6px 10px; font-family: 'Lexend', sans-serif; font-size: 11px;
+  color: var(--text); white-space: nowrap; pointer-events: none;
+  opacity: 0; transition: opacity .2s; z-index: 20;
+}
+.sdot .tip::before {
+  content: ''; position: absolute; top: -5px; left: 50%; transform: translateX(-50%);
+  border-left: 5px solid transparent; border-right: 5px solid transparent;
+  border-bottom: 5px solid var(--border);
+}
+.sdot:hover .tip { opacity: 1; }
+.pbar-wrap { flex:1; display:flex; align-items:center; gap:10px; }
+.pbar { flex:1; height:4px; background:var(--border); border-radius:2px; overflow:hidden; }
+.pfill { height:100%; background:var(--accent); border-radius:2px; transition:width .4s; width:0%; }
+.plabel { font-size:11px; color:var(--text-dim); font-family:'Fira Code',monospace; white-space:nowrap; }
+
+/* ── SEARCH ── */
+.search-wrap { position: relative; }
+.search-input {
+  width: 180px; padding: 5px 10px 5px 28px; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text); font-family: 'Lexend', sans-serif; font-size: 12px;
+  outline: none; transition: all .2s;
+}
+.search-input::placeholder { color: var(--text-dim); }
+.search-input:focus { border-color: var(--accent); width: 240px; }
+.search-icon {
+  position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
+  color: var(--text-dim); font-size: 12px; pointer-events: none;
+}
+.search-results {
+  position: absolute; top: 36px; left: 0; width: 320px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+  max-height: 340px; overflow-y: auto; z-index: 30; display: none;
+  box-shadow: 0 8px 32px rgba(0,0,0,.4);
+}
+.search-results.open { display: block; }
+.search-results::-webkit-scrollbar { width: 4px; }
+.search-results::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.sr-item {
+  display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px;
+  cursor: pointer; transition: background .15s; border-bottom: 1px solid var(--border);
+}
+.sr-item:last-child { border-bottom: none; }
+.sr-item:hover { background: var(--accent-dim); }
+.sr-num {
+  font-family: 'Fira Code', monospace; font-size: 11px; color: var(--accent);
+  flex-shrink: 0; padding-top: 1px;
+}
+.sr-body { flex: 1; min-width: 0; }
+.sr-title { font-size: 13px; color: var(--text); font-weight: 500; line-height: 1.3; }
+.sr-match { font-size: 11px; color: var(--text-dim); margin-top: 3px; line-height: 1.4; }
+.sr-match mark { background: var(--accent-dim); color: var(--accent); border-radius: 2px; padding: 0 2px; }
+.sr-empty { padding: 16px; text-align: center; font-size: 12px; color: var(--text-dim); }
+.sr-hint { padding: 8px 14px; font-size: 10px; color: var(--text-dim); font-family: 'Fira Code', monospace; border-top: 1px solid var(--border); }
+
+/* ── MAIN ── */
+main { display:flex; flex:1; overflow:hidden; }
+
+/* ── DIAGRAM ── */
+#dia {
+  flex: 0 0 44%; overflow-y: auto; overflow-x: hidden;
+  border-right: 1px solid var(--border); position: relative;
+}
+#dia::-webkit-scrollbar { width:5px; }
+#dia::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+#pcb { width:100%; display:block; }
+#legend {
+  position: absolute; top: 8px; left: 8px;
+  background: rgba(12,16,24,0.85); border: 1px solid var(--border);
+  border-radius: 6px; padding: 8px 12px; font-size: 11px; z-index: 2;
+}
+#legend .lr { display:flex; align-items:center; gap:6px; padding:2px 0; color:var(--text-dim); }
+#legend .ld { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+#legend .ls { width:14px; height:2px; border-radius:1px; flex-shrink:0; }
+
+/* SVG */
+.trc { fill:none; stroke:var(--trace); stroke-width:2; opacity:.45; transition:all .5s; }
+.trc.hi { stroke:var(--trace-hi); stroke-width:2.5; opacity:1; }
+.trc.dim { opacity:.12; }
+.trc.dash { stroke-dasharray:8,5; }
+.chip { cursor:pointer; transition:opacity .5s; }
+.chip.dim { opacity:.18; }
+.chip rect { fill:var(--card); stroke-width:2; rx:6; ry:6; transition:all .5s; }
+.chip.hi rect { filter:drop-shadow(0 0 10px var(--gc)); }
+.chip text.cl { fill:var(--text); font-family:'Fira Code',monospace; font-size:12px; pointer-events:none; }
+.chip .hb { fill:var(--purple); }
+.chip .hl { fill:var(--purple); font-size:7px; font-weight:700; font-family:'Lexend',sans-serif; }
+.tlbl { font-family:'Fira Code',monospace; font-size:10px; opacity:.55; transition:all .5s; }
+.tlbl.hi { opacity:1; fill:var(--accent); }
+.tlbl.dim { opacity:.1; }
+
+/* ── LESSON ── */
+#les {
+  flex:1; overflow-y:auto; padding:36px 44px; scroll-behavior:smooth;
+}
+#les::-webkit-scrollbar { width:5px; }
+#les::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+
+/* Intro */
+#intro {
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  min-height:100%; text-align:center;
+}
+#intro h2 {
+  font-family:'Bricolage Grotesque',sans-serif; font-size:48px; font-weight:700;
+  color:var(--accent); margin-bottom:8px;
+}
+#intro .sub { font-size:14px; color:var(--text-dim); margin-bottom:24px; letter-spacing:1px; text-transform:uppercase; }
+#intro .desc { font-size:15px; color:#8a857d; max-width:440px; line-height:1.7; margin-bottom:6px; }
+#intro .meta { font-size:12px; color:var(--text-dim); font-family:'Fira Code',monospace; margin-bottom:36px; }
+.start-btn {
+  padding:14px 40px; background:var(--accent); color:var(--bg); border:none; border-radius:8px;
+  font-family:'Lexend',sans-serif; font-size:15px; font-weight:600; cursor:pointer; transition:all .2s;
+}
+.start-btn:hover { transform:translateY(-2px); box-shadow:0 4px 24px rgba(232,168,56,.3); }
+
+/* Concept */
+#concept { display:none; }
+#concept.on { display:block; }
+.cnum { font-family:'Fira Code',monospace; font-size:13px; color:var(--accent); margin-bottom:6px; }
+.ctitle {
+  font-family:'Bricolage Grotesque',sans-serif; font-size:26px; font-weight:600;
+  color:#f0f0ea; margin-bottom:22px; line-height:1.3;
+}
+.tldr {
+  background:var(--accent-dim); border-left:3px solid var(--accent);
+  padding:14px 18px; border-radius:0 8px 8px 0;
+  font-size:14px; line-height:1.6; margin-bottom:28px;
+}
+.tldr-lab {
+  font-family:'Fira Code',monospace; font-size:10px; color:var(--accent);
+  text-transform:uppercase; letter-spacing:1px; display:block; margin-bottom:4px;
+}
+.cnt { font-size:14px; line-height:1.8; color:#b5b0a8; margin-bottom:36px; }
+.cnt p { margin-bottom:14px; }
+.cnt strong { color:var(--text); font-weight:500; }
+.cnt em { color:var(--text); }
+.cnt code {
+  background:var(--code-bg); padding:2px 6px; border-radius:4px;
+  font-family:'Fira Code',monospace; font-size:12px; color:var(--accent);
+}
+.cnt pre {
+  background:var(--code-bg); padding:16px 18px; border-radius:8px; margin:12px 0 16px;
+  overflow-x:auto; font-family:'Fira Code',monospace; font-size:12px; line-height:1.6;
+  color:var(--text); border:1px solid var(--border);
+}
+.cnt a { color:var(--teal); text-decoration:none; }
+.cnt a:hover { text-decoration:underline; }
+.cnt .file {
+  display:inline-block; margin:4px 0; padding:3px 10px; border-radius:4px;
+  background:var(--card); color:var(--teal); font-family:'Fira Code',monospace;
+  font-size:11px; border:1px solid var(--border);
+}
+.tag { display:inline-block; padding:2px 8px; border-radius:12px; font-size:11px; font-weight:600; margin:0 2px; vertical-align:middle; }
+.tag-h { background:rgba(167,139,250,.12); color:var(--purple); border:1px solid rgba(167,139,250,.25); }
+.tag-hook { background:var(--error-dim); color:var(--error); border:1px solid rgba(248,113,113,.25); }
+.tag-state { background:rgba(251,146,60,.12); color:var(--orange); border:1px solid rgba(251,146,60,.25); }
+.tag-green { background:var(--success-dim); color:var(--success); border:1px solid rgba(52,211,153,.25); }
+
+/* Quiz */
+.qsec {
+  background:var(--card); border:1px solid var(--border); border-radius:12px;
+  padding:24px; margin-bottom:28px;
+}
+.qhead { font-family:'Fira Code',monospace; font-size:11px; color:var(--teal); text-transform:uppercase; letter-spacing:1px; margin-bottom:14px; }
+.qq { font-size:15px; color:var(--text); font-weight:500; margin-bottom:16px; line-height:1.5; }
+.qopts { display:flex; flex-direction:column; gap:8px; }
+.qo {
+  display:flex; align-items:center; gap:12px; padding:12px 16px;
+  background:var(--bg); border:1px solid var(--border); border-radius:8px;
+  cursor:pointer; font-family:'Lexend',sans-serif; font-size:13px; color:var(--text);
+  text-align:left; transition:all .2s;
+}
+.qo:hover:not(:disabled) { border-color:var(--teal); background:var(--teal-dim); }
+.qo .ql {
+  width:24px; height:24px; border-radius:50%; border:1px solid var(--border);
+  display:flex; align-items:center; justify-content:center;
+  font-family:'Fira Code',monospace; font-size:11px; color:var(--text-dim); flex-shrink:0;
+}
+.qo.ok { border-color:var(--success); background:var(--success-dim); }
+.qo.ok .ql { border-color:var(--success); color:var(--success); }
+.qo.no { border-color:var(--error); background:var(--error-dim); }
+.qo.no .ql { border-color:var(--error); color:var(--error); }
+.qo:disabled { cursor:default; opacity:.5; }
+.qo.ok:disabled, .qo.no:disabled { opacity:1; }
+.qfb { margin-top:16px; padding:14px 16px; border-radius:8px; font-size:13px; line-height:1.6; display:none; }
+.qfb.show { display:block; }
+.qfb.ok { background:var(--success-dim); border:1px solid rgba(52,211,153,.25); color:var(--success); }
+.qfb.no { background:var(--error-dim); border:1px solid rgba(248,113,113,.25); color:var(--error); }
+
+/* Nav */
+.nav { display:flex; justify-content:space-between; align-items:center; padding-top:8px; }
+.nbtn {
+  padding:10px 24px; background:var(--card); border:1px solid var(--border); border-radius:8px;
+  color:var(--text); font-family:'Lexend',sans-serif; font-size:13px; cursor:pointer; transition:all .2s;
+}
+.nbtn:hover { border-color:var(--accent); background:var(--accent-dim); }
+.nbtn.pri { background:var(--accent); color:var(--bg); border-color:var(--accent); font-weight:600; }
+.nbtn.pri:hover { box-shadow:0 2px 12px rgba(232,168,56,.25); }
+.nbtn:disabled { opacity:.3; cursor:default; }
+.nbtn:disabled:hover { border-color:var(--border); background:var(--card); }
+
+/* Done screen */
+#done { display:none; text-align:center; padding-top:80px; }
+#done.on { display:block; }
+#done h2 { font-family:'Bricolage Grotesque',sans-serif; font-size:32px; color:var(--success); margin-bottom:16px; }
+#done p { font-size:15px; color:var(--text-dim); line-height:1.7; max-width:440px; margin:0 auto 12px; }
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">lakitu</span>
+  <div class="steps" id="steps"></div>
+  <div class="search-wrap">
+    <span class="search-icon">&#9906;</span>
+    <input class="search-input" id="searchInput" type="text" placeholder="Search concepts..." autocomplete="off">
+    <div class="search-results" id="searchResults"></div>
+  </div>
+  <div class="pbar-wrap">
+    <div class="pbar"><div class="pfill" id="pfill"></div></div>
+    <span class="plabel" id="plabel">0 / 9</span>
+  </div>
+</header>
+<main>
+  <aside id="dia">
+    <div id="legend">
+      <div class="lr"><span class="ld" style="background:var(--purple)"></span> Haiku (small model)</div>
+      <div class="lr"><span class="ls" style="background:var(--trace)"></span> data flow</div>
+      <div class="lr"><span class="ls" style="background:var(--error);border-top:1px dashed var(--error)"></span> fail loop</div>
+      <div class="lr"><span class="ld" style="background:var(--orange)"></span> state file</div>
+      <div class="lr"><span class="ld" style="background:var(--error)"></span> hook</div>
+      <div class="lr"><span class="ld" style="background:var(--success)"></span> output</div>
+    </div>
+    <svg id="pcb" viewBox="0 0 900 1240"></svg>
+  </aside>
+  <section id="les">
+    <div id="intro">
+      <h2>lakitu</h2>
+      <p class="sub">Procgen Knowledge System</p>
+      <p class="desc">An interactive guide to how lakitu prevents LLMs from writing broken procedural generators.</p>
+      <p class="meta">9 concepts &middot; ~15 min</p>
+      <button class="start-btn" onclick="goTo(0)">Start Learning</button>
+    </div>
+    <div id="concept"></div>
+    <div id="done">
+      <h2>You made it.</h2>
+      <p>You've walked through all 9 concepts of the lakitu system. Click any step dot above to revisit a concept, or explore the diagram on the left.</p>
+    </div>
+  </section>
+</main>
+
+<script>
+// ── CHIP DATA ──
+const chips = [
+  { id:"user",      x:450, y:60,   w:170, h:42, label:"User Request",      border:"#3fb950" },
+  { id:"procgen",   x:450, y:160,  w:140, h:42, label:"/procgen",           border:"#d29922" },
+  { id:"pipe",      x:450, y:260,  w:155, h:42, label:"pipeline.py",        border:"#d29922" },
+  { id:"decompose", x:160, y:390,  w:155, h:42, label:"Decompose",          border:"#3fb950", haiku:true },
+  { id:"memory",    x:450, y:390,  w:175, h:42, label:"Memory Lookup",      border:"#3fb950" },
+  { id:"search",    x:740, y:390,  w:130, h:42, label:"Search",             border:"#3fb950" },
+  { id:"vsrc",      x:740, y:510,  w:175, h:42, label:"Verify Sources",     border:"#3fb950", haiku:true },
+  { id:"extract",   x:450, y:630,  w:200, h:42, label:"Extract Techniques", border:"#3fb950", haiku:true },
+  { id:"techs",     x:120, y:540,  w:170, h:42, label:"techniques.md",      border:"#f78166" },
+  { id:"select",    x:450, y:750,  w:185, h:42, label:"Select Technique",   border:"#3fb950" },
+  { id:"synth",     x:450, y:870,  w:175, h:42, label:"Code Synthesis",     border:"#3fb950", haiku:true },
+  { id:"active",    x:730, y:870,  w:145, h:42, label:"active.json",        border:"#f78166" },
+  { id:"hook",      x:450, y:990,  w:175, h:42, label:"Verify Code",        border:"#f85149", haiku:true },
+  { id:"dungeon",   x:450, y:1130, w:155, h:42, label:"dungeon.py",         border:"#7ee787" },
+];
+const cmap = {}; chips.forEach(c => cmap[c.id] = c);
+
+// ── TRACE DATA ──
+const traces = [
+  { f:"user",      t:"procgen"  },
+  { f:"procgen",   t:"pipe"     },
+  { f:"pipe",      t:"decompose", curve:true },
+  { f:"pipe",      t:"memory"   },
+  { f:"pipe",      t:"search",    curve:true },
+  { f:"search",    t:"vsrc"     },
+  { f:"decompose", t:"extract",   curve:true },
+  { f:"vsrc",      t:"extract",   curve:true },
+  { f:"memory",    t:"techs",     side:true, label:"reads" },
+  { f:"extract",   t:"techs",     side:true, label:"writes" },
+  { f:"extract",   t:"select"   },
+  { f:"memory",    t:"select",    bypass:true, label:"hit" },
+  { f:"select",    t:"synth"    },
+  { f:"synth",     t:"active",    side:true, label:"emit" },
+  { f:"synth",     t:"hook"     },
+  { f:"active",    t:"hook",      side:true, label:"reads" },
+  { f:"hook",      t:"dungeon",   label:"pass" },
+  { f:"hook",      t:"synth",     loop:true, label:"fail" },
+];
+
+// ── CONCEPT DATA ──
+const concepts = [
+  { id:"problem", num:"01", title:"What problem does lakitu solve?",
+    chips:["user"],
+    tldr:"LLMs default to brute-force generate-and-test loops. Lakitu intercepts before code generation, finds a real PCG technique, and verifies the output uses it.",
+    body:`<p>When you ask an LLM to write a procedural generator, it defaults to <strong>generate-and-test</strong>:</p>
+<pre>while attempts < 100:          # the problem
+    grid = random_walls()
+    if bfs(grid, start, goal):
+        return grid             # hope for the best</pre>
+<p>This works for toy examples but fails on real constraints (ordering, connectivity, adjacency). The code <em>looks</em> like it works — until the constraints get complex.</p>
+<p>lakitu intercepts <strong>before code generation</strong>, finds a proper PCG technique (ASP, WFC, Perlin noise...), and <strong>verifies</strong> the generated code actually uses it — not a generate-and-test loop disguised with technique-sounding comments.</p>`,
+    quiz:{ q:"What's the core issue with asking an LLM to write a level generator?",
+      opts:["It writes code that's too slow to run",
+            "It defaults to generate-and-test, which fails on complex constraints",
+            "It can't understand game design vocabulary",
+            "It only generates 2D grid levels"],
+      ans:1, why:"LLMs pattern-match to retry loops that hope random attempts satisfy constraints. This works for toys but breaks when constraints (connectivity, adjacency, ordering) get real." }
+  },
+  { id:"pipeline", num:"02", title:"What happens when you type /procgen?",
+    chips:["procgen","pipe","decompose","memory","search","vsrc","extract","select","synth"],
+    tldr:"/procgen triggers a 9-stage pipeline where Haiku handles everything — including code synthesis. The big model just writes the result to a file.",
+    body:`<p>The <code>/procgen</code> skill invokes <code>pipeline.py</code>, which orchestrates the full flow:</p>
+<pre>1. Decompose     → parse request into typed ProcgenProblem
+2. Memory Lookup  → check techniques.md for cached cards
+3. Search         → corpus (local) + web (Jina API)
+4. Verify Sources → classify by trust and freshness
+5. Extract        → build TechniqueCard structs
+6. Write Memory   → append to techniques.md
+7. Select         → score by constraint overlap
+8. Synthesize     → Haiku generates the complete code
+9. Emit           → write active.json + output</pre>
+<p>The main model (Opus/Sonnet) is just a <strong>pass-through</strong>. It runs <code>/procgen</code>, receives back a JSON blob with a <code>code</code> field containing a complete runnable Python file written by Haiku, and writes it to disk. No code synthesis by the big model.</p>
+<p class="file">pipeline.py → .claude/skills/procgen/scripts/pipeline.py</p>`,
+    quiz:{ q:"What does the main model (Opus/Sonnet) actually do in this pipeline?",
+      opts:["Runs all 9 pipeline stages",
+            "Synthesizes code from the technique card",
+            "Writes Haiku's generated code to a file — nothing more",
+            "Decomposes the problem into constraints"],
+      ans:2, why:"The main model is a pass-through. Haiku does all the work: decomposition, search, verification, extraction, and code synthesis. The big model just saves the result." }
+  },
+  { id:"small", num:"03", title:"Where does the small model run?",
+    chips:["decompose","vsrc","extract","synth","hook"],
+    tldr:"5 Haiku calls handle the entire pipeline — including code synthesis. The big model never generates code.",
+    body:`<p>Five places — all via BAML functions calling <span class="tag tag-h">Haiku</span> through OpenRouter:</p>
+<pre>DecomposeProblem()  → parses request into ProcgenProblem
+VerifySource()      → classifies a web source's trust tier
+ExtractTechnique()  → builds a TechniqueCard from a document
+SynthesizeCode()    → writes the complete generator code
+VerifyTechnique()   → checks generated code for anti-patterns</pre>
+<p>The <strong>main model</strong> (whatever Claude Code runs — Opus, Sonnet, doesn't matter) is a <strong>pass-through</strong>. It runs <code>/procgen</code>, gets back a JSON blob with a complete Python file in the <code>code</code> field, and writes it to disk. Zero code synthesis by the big model.</p>
+<p>This is the core design goal: the <strong>entire intelligence pipeline is cheap</strong>. You could swap Haiku for any small model that handles structured output. The big model is just an I/O layer.</p>
+<p class="file">clients.baml → baml_src/clients.baml (model config)</p>`,
+    quiz:{ q:"How many BAML functions call the small model (Haiku)?",
+      opts:["3","4","5","All 9 stages"],
+      ans:2, why:"Five BAML functions call Haiku: DecomposeProblem, VerifySource, ExtractTechnique, SynthesizeCode, and VerifyTechnique. The rest is orchestration code (Python scripts, vector search)." }
+  },
+  { id:"baml", num:"04", title:"Why BAML?",
+    chips:["decompose","vsrc","extract","hook"],
+    tldr:"BAML gives small models typed, validated structured output instead of unreliable raw JSON.",
+    body:`<p>Small models are <strong>unreliable at structured output</strong>. Ask Haiku to return JSON and it might:</p>
+<pre>{"output_structure": "GRID_2D",     ← correct
+ constraints: [                      ← missing quotes
+   {name: "walls", type: STRUCTURAL} ← unquoted enum
+ ]}</pre>
+<p>BAML defines <strong>typed schemas</strong> and generates a Python client that parses + validates + retries with SAP (Structured Argument Parsing). You get real Pydantic objects:</p>
+<pre>class ProcgenProblem(BaseModel):
+    output_structure: OutputType    # enum, not string
+    constraints: list[Constraint]   # typed, not dict
+    scale: str
+    realtime: bool</pre>
+<p>Every pipeline stage exchanges <strong>typed structs</strong>, not raw strings. If Haiku hallucinates the wrong type, BAML catches it. The design fiction calls this "nothing is a black box — every stage produces typed, inspectable output."</p>
+<p class="file">baml_src/types.baml</p> <p class="file">baml_src/functions.baml</p>`,
+    quiz:{ q:"What happens when Haiku returns malformed JSON?",
+      opts:["The pipeline crashes with an error",
+            "BAML catches it, validates, and retries automatically",
+            "The main model fixes the JSON",
+            "The user gets an error message to retry"],
+      ans:1, why:"BAML defines typed schemas and generates a Python client with SAP (Structured Argument Parsing) that parses, validates, and retries. You get real Pydantic objects, not raw strings." }
+  },
+  { id:"hook", num:"05", title:"How does the verification hook work?",
+    chips:["synth","active","hook","dungeon"],
+    tldr:"A PostToolUse hook blocks code that uses generate-and-test and re-prompts with the correct implementation pattern.",
+    body:`<p>Registered in <code>.claude/settings.json</code> as a <span class="tag tag-hook">PostToolUse</span> hook on <code>Write</code> and <code>Edit</code> tools.</p>
+<p>When Claude writes a <code>.py</code> file, <code>verify_procgen.py</code> runs automatically:</p>
+<pre>1. Read active.json (written by Emit stage, expires 600s)
+2. Extract: technique name, fingerprint, anti-patterns
+3. Call VerifyTechnique(code, fingerprint, anti_patterns)
+4. If uses_technique=True  → exit 0 (write proceeds)
+5. If uses_technique=False → exit 1 (write BLOCKED)</pre>
+<p>The technique card carries <strong>both sides</strong>:</p>
+<pre>fingerprint:                          # what correct code looks like
+  imports: ["clingo"]
+  patterns: [":-", "#show", ":- not"]
+
+anti_patterns:                         # what generate-and-test looks like
+  - "random.randint" with retry loop
+  - "while attempts < "
+  - "for attempt in range"</pre>
+<p>On failure, the hook blocks the write and re-prompts the orchestrator with the <strong>concrete implementation pattern</strong> from the technique card. Since the orchestrator is just writing Haiku's output, a failure here means the synthesis step needs to be re-run — the big model never improvises its own code.</p>
+<p class="file">.claude/hooks/verify_procgen.py</p> <p class="file">.claude/skills/procgen_state/active.json</p>`,
+    quiz:{ q:"What does the hook do when it detects generate-and-test code?",
+      opts:["Logs a warning and lets it pass",
+            "Deletes the generated file",
+            "Blocks the write and re-prompts with the working implementation",
+            "Asks the user whether to proceed"],
+      ans:2, why:"The hook exits with code 1 (BLOCKED) and provides the concrete implementation pattern from the technique card. Not 'try again' — 'here is the working code, use it.'" }
+  },
+  { id:"knowledge", num:"06", title:"Where does knowledge come from?",
+    chips:["memory","search","vsrc","techs"],
+    tldr:"Pre-trusted local corpus ranks highest. Web results get verified and classified by trust tier before use.",
+    body:`<p>Two trust tiers:</p>
+<p><strong>Tier 1: Local corpus</strong> <span class="tag tag-green">pre-trusted</span></p>
+<p>Files in <code>corpus/indexed/</code> — textbook chapters, papers. Embedded with sentence-transformers (<code>multi-qa-MiniLM-L6-dot-v1</code>) and searched by vector similarity. No source verification needed. Currently: ASP chapter from the PCG in Games textbook.</p>
+<p><strong>Tier 2: Web search</strong> <span class="tag tag-h">verified</span></p>
+<p>Jina API (<code>s.jina.ai</code> search, <code>r.jina.ai</code> reader). Every result goes through <code>VerifySource()</code> which classifies it:</p>
+<pre>ACADEMIC       → arxiv, ACM, IEEE (high trust)
+OFFICIAL_DOCS  → library docs (high trust)
+TUTORIAL       → structured, known platform (medium trust)
+BLOG_REPUTABLE → known practitioner (medium trust)
+BLOG_UNKNOWN   → random blog (skipped)
+GENERATED      → AI-generated (skipped)</pre>
+<p>Corpus results <strong>always rank higher</strong> than web results in the merged source list.</p>`,
+    quiz:{ q:"A blog post from an unknown author would be classified as:",
+      opts:["TUTORIAL — medium trust",
+            "BLOG_UNKNOWN — skipped entirely",
+            "BLOG_REPUTABLE — medium trust",
+            "GENERATED — skipped entirely"],
+      ans:1, why:"VerifySource() classifies unknown blogs as BLOG_UNKNOWN and skips them. Only known practitioners (BLOG_REPUTABLE) get medium trust." }
+  },
+  { id:"grow", num:"07", title:"How do you grow the system?",
+    chips:["techs","extract","memory"],
+    tldr:"The system grows automatically by caching technique cards. You can also add corpus files or extend BAML types.",
+    body:`<p>Three paths, ordered by effort:</p>
+<p><strong>1. Automatic (zero effort)</strong> — every time the pipeline runs and memory misses, it searches the web, verifies sources, extracts technique cards, and <strong>appends them to <code>techniques.md</code></strong>. Next session, that technique is a cache hit.</p>
+<p><strong>2. Add corpus</strong> — drop a <code>.txt</code> file in <code>corpus/</code>. The indexer (<code>index_corpus.py</code>) computes embeddings and moves it to <code>corpus/indexed/</code>. It becomes searchable immediately as a pre-trusted source.</p>
+<p><strong>3. Add technique types</strong> — extend the BAML enums in <code>baml_src/types.baml</code>:</p>
+<pre># Add a new constraint type
+enum ConstraintType {
+  CONNECTIVITY
+  PLACEMENT
+  ...
+  SYMMETRY   # new!</pre>
+<p>Then regenerate the client: <code>baml-cli generate</code></p>
+<p class="file">corpus/ → drop .txt files here</p>
+<p class="file">.claude/knowledge/techniques.md → self-populating</p>`,
+    quiz:{ q:"What's the zero-effort way to grow lakitu's knowledge?",
+      opts:["Edit techniques.md manually",
+            "Run the pipeline — it auto-caches new techniques on miss",
+            "Add .txt files to the corpus directory",
+            "Extend the BAML enum types"],
+      ans:1, why:"Every pipeline run that misses memory will search, verify, extract, and cache the technique card automatically. Next time, it's a cache hit." }
+  },
+  { id:"evolution", num:"08", title:"What went wrong before?",
+    chips:["dungeon"],
+    tldr:"Three stages: brute-force → fake technique → real technique. Stage 1's subtle failure motivated the verification hook.",
+    body:`<p>Three evolutionary stages, all in the repo:</p>
+<p><strong>Stage 0: generate-and-test</strong> <span class="tag tag-hook">baseline failure</span></p>
+<pre>while attempts < 100:       # first_attempt/dungeon.py
+    grid = random_walls()
+    if bfs(grid, start, goal):
+        return grid</pre>
+<p><strong>Stage 1: hybrid fail</strong> <span class="tag tag-hook">the subtle failure</span></p>
+<pre>for attempt in range(1000):  # first_attempt/rlm_dungeon.py
+    gem = pick_pos(adj_walls >= 3)   # "ASP-inspired"
+    altar = pick_pos(adj_walls == 0) # sounds right...
+    if bfs(gem, altar):
+        return grid          # still generate-and-test!</pre>
+<p>This is the failure mode that <strong>motivated the verification hook</strong>. The code <em>describes</em> constraints in comments but <em>implements</em> generate-and-test. LLMs do this naturally — they pattern-match the vocabulary without using the technique.</p>
+<p><strong>Stage 2: real ASP</strong> <span class="tag tag-green">correct</span></p>
+<pre>PROGRAM = """                 # dungeon.py
+tile(0..9, 0..9).             % ASP rules
+1 { sprite(X,Y,wall) } 1 :- tile(X,Y).
+:- gem(X,Y), not reach(X,Y,1).  % solver guarantees
+"""
+clingo.Control().solve()      # zero retry loops</pre>
+<p class="file">first_attempt/claude_code_RLM/dungeon.py → Stage 0</p>
+<p class="file">first_attempt/claude_code_RLM/rlm_dungeon.py → Stage 1</p>
+<p class="file">dungeon.py → Stage 2</p>`,
+    quiz:{ q:"What makes Stage 1 (hybrid fail) the 'subtle failure'?",
+      opts:["It uses random number generation",
+            "It's slower than Stage 0",
+            "It describes constraints in comments but still implements generate-and-test",
+            "It doesn't import the right libraries"],
+      ans:2, why:"LLMs pattern-match vocabulary without using the technique. The code has 'ASP-inspired' comments and constraint-sounding variable names, but underneath it's still a retry loop." }
+  },
+  { id:"rlm", num:"09", title:"When does the RLM kick in?",
+    chips:["memory","techs"],
+    tldr:"When techniques.md outgrows the context window, an RLM chunks and filters it using sub-agent calls.",
+    body:`<p>When <code>techniques.md</code> grows <strong>beyond the context window</strong>. Currently it has 1 technique (~200 lines). The design fiction projects Session 31 at 47 techniques / 15,000 lines.</p>
+<p>At that point, the <code>/rlm</code> skill activates:</p>
+<pre>1. rlm_repl.py loads techniques.md into state
+2. Chunks it by ## headers (natural semantic boundaries)
+3. Each chunk → rlm-subcall agent (Haiku, Read-only)
+4. Sub-agent extracts technique matches for the query
+5. Only matching cards enter the main context</pre>
+<p>This is the same RLM pattern from the <a href="https://arxiv.org/abs/2512.24601" style="color:var(--teal)">paper</a> — but applied to a <strong>structured, verified knowledge base</strong> instead of raw textbook PDFs. The memory was built correctly by the pipeline, so the sub-calls are searching high-quality structured data.</p>
+<p>The infrastructure is already in place: <code>/rlm</code> skill, <code>rlm_repl.py</code>, <code>rlm-subcall</code> agent. It just doesn't need to activate yet.</p>
+<p class="file">.claude/skills/rlm/SKILL.md</p>
+<p class="file">.claude/agents/rlm-subcall.md</p>`,
+    quiz:{ q:"When does the RLM need to activate?",
+      opts:["On every pipeline run for safety",
+            "When techniques.md exceeds the context window",
+            "When web search returns no results",
+            "When the user types /rlm explicitly"],
+      ans:1, why:"Currently techniques.md has ~200 lines (1 technique). The RLM infrastructure exists but doesn't activate until memory grows beyond what fits in context (~47 techniques / 15,000 lines)." }
+  },
+];
+
+// ── STATE ──
+let cur = -1; // -1 = intro
+const visited = new Set(JSON.parse(localStorage.getItem('lk-vis') || '[]'));
+
+// ── RENDER SVG ──
+const svg = document.getElementById("pcb");
+const NS = "http://www.w3.org/2000/svg";
+function el(p, tag, a) {
+  const e = document.createElementNS(NS, tag);
+  if (a) Object.entries(a).forEach(([k,v]) => e.setAttribute(k,v));
+  p.appendChild(e);
+  return e;
+}
+
+// defs
+const defs = el(svg,"defs",{});
+// grid pattern
+const pat = el(defs,"pattern",{id:"grid",width:"30",height:"30",patternUnits:"userSpaceOnUse"});
+el(pat,"path",{d:"M 30 0 L 0 0 0 30",fill:"none",stroke:"rgba(232,168,56,0.03)",strokeWidth:"0.5"});
+// arrow markers
+[["arr","#6b5c3e"],["arr-hi","#e8a838"],["arr-fail","#f87171"]].forEach(([mid,col]) => {
+  const m = el(defs,"marker",{id:mid,viewBox:"0 -4 8 8",refX:"6",markerWidth:"6",markerHeight:"6",orient:"auto"});
+  el(m,"path",{d:"M0,-4L8,0L0,4Z",fill:col});
+});
+// bg grid
+el(svg,"rect",{width:"900",height:"1240",fill:"url(#grid)"});
+
+// trace paths
+function tpath(t) {
+  const f = cmap[t.f], to = cmap[t.t];
+  const fy = f.y + f.h/2, ty = to.y - to.h/2;
+  if (t.loop) {
+    const lx = Math.min(f.x - f.w/2, to.x - to.w/2) - 55;
+    return `M${f.x - f.w/2},${f.y} C${lx},${f.y} ${lx},${to.y} ${to.x - to.w/2},${to.y}`;
+  }
+  if (t.side) {
+    const goR = to.x > f.x;
+    const sx = goR ? f.x + f.w/2 : f.x - f.w/2;
+    const ex = goR ? to.x - to.w/2 : to.x + to.w/2;
+    const mx = (sx + ex) / 2;
+    return `M${sx},${f.y} C${mx},${f.y} ${mx},${to.y} ${ex},${to.y}`;
+  }
+  if (t.bypass) {
+    const mx = f.x - f.w/2 - 40;
+    return `M${f.x - f.w/2},${f.y + 10} C${mx},${f.y + 60} ${mx},${to.y - 60} ${to.x - to.w/2},${to.y}`;
+  }
+  if (t.curve) {
+    const my = (fy + ty) / 2;
+    return `M${f.x},${fy} C${f.x},${my} ${to.x},${my} ${to.x},${ty}`;
+  }
+  return `M${f.x},${fy} L${to.x},${ty}`;
+}
+
+const traceEls = [];
+const labelEls = [];
+traces.forEach((t,i) => {
+  const cls = "trc" + (t.loop ? " dash" : "");
+  const p = el(svg,"path",{d:tpath(t),class:cls,"marker-end":t.loop?"url(#arr-fail)":"url(#arr)"});
+  traceEls.push(p);
+  if (t.label) {
+    const f2 = cmap[t.f], t2 = cmap[t.t];
+    let lx, ly;
+    if (t.loop) { lx = Math.min(f2.x-f2.w/2, t2.x-t2.w/2) - 55; ly = (f2.y+t2.y)/2; }
+    else if (t.bypass) { lx = f2.x-f2.w/2-50; ly = (f2.y+t2.y)/2; }
+    else if (t.side) { lx = (f2.x+t2.x)/2; ly = Math.min(f2.y,t2.y) - 10; }
+    else { lx = (f2.x+t2.x)/2 + 14; ly = (f2.y+t2.y)/2 - 8; }
+    const lb = el(svg,"text",{x:lx,y:ly,class:"tlbl","text-anchor":"middle","fill":"#7a7050"});
+    lb.textContent = t.label;
+    labelEls.push({el:lb, idx:i});
+  } else { labelEls.push(null); }
+});
+
+// chips
+const chipEls = {};
+chips.forEach(c => {
+  const g = el(svg,"g",{class:"chip","data-id":c.id,style:`--gc:${c.border}`});
+  el(g,"rect",{x:c.x-c.w/2,y:c.y-c.h/2,width:c.w,height:c.h,stroke:c.border});
+  el(g,"text",{x:c.x,y:c.y+4.5,"text-anchor":"middle",class:"cl"}).textContent = c.label;
+  if (c.haiku) {
+    el(g,"circle",{cx:c.x+c.w/2-10,cy:c.y-c.h/2+9,r:4,class:"hb"});
+    el(g,"text",{x:c.x+c.w/2-10,y:c.y-c.h/2+11.5,"text-anchor":"middle",class:"hl"}).textContent = "H";
+  }
+  g.addEventListener("click", () => {
+    const idx = concepts.findIndex(co => co.chips.includes(c.id));
+    if (idx >= 0) goTo(idx);
+  });
+  chipEls[c.id] = g;
+});
+
+// ── RENDER STEPS ──
+const stepsEl = document.getElementById("steps");
+concepts.forEach((c,i) => {
+  const b = document.createElement("button");
+  b.className = "sdot";
+  b.textContent = c.num;
+  const tip = document.createElement("span");
+  tip.className = "tip";
+  tip.textContent = c.title;
+  b.appendChild(tip);
+  b.addEventListener("click", () => goTo(i));
+  stepsEl.appendChild(b);
+});
+
+// ── HIGHLIGHT ──
+function highlight(chipIds) {
+  const active = chipIds && chipIds.length > 0;
+  const set = new Set(chipIds || []);
+
+  chips.forEach(c => {
+    const g = chipEls[c.id];
+    g.classList.remove("hi","dim");
+    if (active) g.classList.add(set.has(c.id) ? "hi" : "dim");
+  });
+
+  traces.forEach((t,i) => {
+    const p = traceEls[i];
+    p.classList.remove("hi","dim");
+    const both = set.has(t.f) && set.has(t.t);
+    if (active) {
+      p.classList.add(both ? "hi" : "dim");
+      p.setAttribute("marker-end", both ? (t.loop ? "url(#arr-fail)" : "url(#arr-hi)") : "url(#arr)");
+    } else {
+      p.setAttribute("marker-end", t.loop ? "url(#arr-fail)" : "url(#arr)");
+    }
+  });
+
+  labelEls.forEach(lb => {
+    if (!lb) return;
+    lb.el.classList.remove("hi","dim");
+    const t = traces[lb.idx];
+    const both = set.has(t.f) && set.has(t.t);
+    if (active) lb.el.classList.add(both ? "hi" : "dim");
+  });
+}
+
+// ── SCROLL DIAGRAM ──
+function scrollDia(chipIds) {
+  if (!chipIds || !chipIds.length) return;
+  const ys = chipIds.map(id => cmap[id].y);
+  const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+  const svgEl = document.getElementById("pcb");
+  const scale = svgEl.clientWidth / 900;
+  const panel = document.getElementById("dia");
+  panel.scrollTo({ top: cy * scale - panel.clientHeight / 2, behavior:"smooth" });
+}
+
+// ── RENDER CONCEPT ──
+function renderConcept(idx) {
+  const c = concepts[idx];
+  const box = document.getElementById("concept");
+  const letters = "ABCD";
+  box.innerHTML = `
+    <div class="cnum">${c.num} / 09</div>
+    <h2 class="ctitle">${c.title}</h2>
+    <div class="tldr"><span class="tldr-lab">tl;dr</span>${c.tldr}</div>
+    <div class="cnt">${c.body}</div>
+    <div class="qsec">
+      <div class="qhead">Test yourself</div>
+      <p class="qq">${c.quiz.q}</p>
+      <div class="qopts">
+        ${c.quiz.opts.map((o,i) => `<button class="qo" data-i="${i}"><span class="ql">${letters[i]}</span><span>${o}</span></button>`).join("")}
+      </div>
+      <div class="qfb" id="qfb"></div>
+    </div>
+    <div class="nav">
+      <button class="nbtn" id="prevBtn" ${idx===0?"disabled":""} onclick="goTo(${idx-1})">← Previous</button>
+      <button class="nbtn pri" id="nextBtn" onclick="goTo(${idx < concepts.length-1 ? idx+1 : -2})">${idx < concepts.length-1 ? "Next →" : "Finish"}</button>
+    </div>`;
+
+  box.querySelectorAll(".qo").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const i = parseInt(btn.dataset.i);
+      const ok = i === c.quiz.ans;
+      box.querySelectorAll(".qo").forEach(b => { b.disabled = true; });
+      btn.classList.add(ok ? "ok" : "no");
+      box.querySelectorAll(".qo")[c.quiz.ans].classList.add("ok");
+      const fb = document.getElementById("qfb");
+      fb.className = "qfb show " + (ok ? "ok" : "no");
+      fb.textContent = (ok ? "Correct. " : "Not quite. ") + c.quiz.why;
+    });
+  });
+}
+
+// ── NAVIGATION ──
+function goTo(idx) {
+  if (idx === -2) { // finish
+    cur = -2;
+    document.getElementById("intro").style.display = "none";
+    document.getElementById("concept").className = "";
+    document.getElementById("done").className = "on";
+    highlight([]);
+    updateProgress();
+    return;
+  }
+  cur = idx;
+  document.getElementById("intro").style.display = idx >= 0 ? "none" : "";
+  document.getElementById("done").className = "";
+  const box = document.getElementById("concept");
+  if (idx >= 0) {
+    box.className = "on";
+    renderConcept(idx);
+    visited.add(idx);
+    localStorage.setItem("lk-vis", JSON.stringify([...visited]));
+    highlight(concepts[idx].chips);
+    scrollDia(concepts[idx].chips);
+  } else {
+    box.className = "";
+    highlight([]);
+  }
+  document.getElementById("les").scrollTop = 0;
+  updateProgress();
+}
+
+function updateProgress() {
+  const n = visited.size;
+  document.getElementById("pfill").style.width = (n / concepts.length * 100) + "%";
+  document.getElementById("plabel").textContent = n + " / " + concepts.length;
+  document.querySelectorAll(".sdot").forEach((d,i) => {
+    d.classList.remove("active","done");
+    if (i === cur) d.classList.add("active");
+    else if (visited.has(i)) d.classList.add("done");
+  });
+}
+
+// keyboard nav
+document.addEventListener("keydown", e => {
+  if (cur < 0) return;
+  if (e.key === "ArrowRight" && cur < concepts.length - 1) goTo(cur + 1);
+  if (e.key === "ArrowLeft" && cur > 0) goTo(cur - 1);
+});
+
+updateProgress();
+
+// ── SEARCH ──
+const searchInput = document.getElementById("searchInput");
+const searchResults = document.getElementById("searchResults");
+
+function stripHtml(html) {
+  const d = document.createElement("div");
+  d.innerHTML = html;
+  return d.textContent;
+}
+
+function searchIndex() {
+  return concepts.map((c, i) => ({
+    idx: i, num: c.num, title: c.title, tldr: c.tldr,
+    text: (c.title + " " + c.tldr + " " + stripHtml(c.body) + " " + c.quiz.q).toLowerCase()
+  }));
+}
+const idx = searchIndex();
+
+function snippet(text, q, len) {
+  const lower = text.toLowerCase();
+  const pos = lower.indexOf(q.toLowerCase());
+  if (pos < 0) return "";
+  const start = Math.max(0, pos - 30);
+  const end = Math.min(text.length, pos + q.length + 50);
+  let s = (start > 0 ? "..." : "") + text.slice(start, end) + (end < text.length ? "..." : "");
+  const re = new RegExp("(" + q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")", "gi");
+  return s.replace(re, "<mark>$1</mark>");
+}
+
+function doSearch(q) {
+  if (!q.trim()) { searchResults.className = "search-results"; return; }
+  const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const hits = idx.filter(e => terms.every(t => e.text.includes(t)));
+  searchResults.className = "search-results open";
+  if (!hits.length) {
+    searchResults.innerHTML = '<div class="sr-empty">No matching concepts</div>';
+    return;
+  }
+  searchResults.innerHTML = hits.map(h => {
+    const match = snippet(h.title + " — " + h.tldr + " " + stripHtml(concepts[h.idx].body), q, 80);
+    return `<div class="sr-item" data-idx="${h.idx}">
+      <span class="sr-num">${h.num}</span>
+      <div class="sr-body">
+        <div class="sr-title">${h.title}</div>
+        ${match ? `<div class="sr-match">${match}</div>` : ""}
+      </div>
+    </div>`;
+  }).join("") + '<div class="sr-hint">↵ enter to jump &middot; esc to close</div>';
+
+  searchResults.querySelectorAll(".sr-item").forEach(el => {
+    el.addEventListener("click", () => {
+      goTo(parseInt(el.dataset.idx));
+      searchInput.value = "";
+      searchResults.className = "search-results";
+      searchInput.blur();
+    });
+  });
+}
+
+searchInput.addEventListener("input", () => doSearch(searchInput.value));
+searchInput.addEventListener("keydown", e => {
+  if (e.key === "Escape") {
+    searchInput.value = "";
+    searchResults.className = "search-results";
+    searchInput.blur();
+    return;
+  }
+  if (e.key === "Enter") {
+    const first = searchResults.querySelector(".sr-item");
+    if (first) {
+      goTo(parseInt(first.dataset.idx));
+      searchInput.value = "";
+      searchResults.className = "search-results";
+      searchInput.blur();
+    }
+  }
+});
+
+document.addEventListener("click", e => {
+  if (!e.target.closest(".search-wrap")) searchResults.className = "search-results";
+});
+
+document.addEventListener("keydown", e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+    e.preventDefault();
+    searchInput.focus();
+  }
+});
+</script>
+</body>
+</html>
