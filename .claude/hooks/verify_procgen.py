@@ -2,22 +2,33 @@ import sys
 import json
 from pathlib import Path
 from datetime import datetime, timezone
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-ACTIVE = Path(__file__).resolve().parent.parent / "procgen_state" / "active.json"
+SCRIPTS = Path(__file__).resolve().parent.parent / "skills" / "procgen" / "scripts"
+sys.path.insert(0, str(SCRIPTS))
+
+ACTIVE = Path(__file__).resolve().parent.parent / "skills" / "procgen_state" / "active.json"
 MAX_AGE_SECONDS = 600
 
 
 def verify(code, state):
-    from baml_client.sync_client import b
+    from llm import call
+    from _types import TechniqueVerification
 
-    result = b.VerifyTechnique(
-        code=code,
-        technique_name=state.get("technique", ""),
-        fingerprint_imports=state.get("fingerprint_imports", []),
-        fingerprint_patterns=state.get("fingerprint_patterns", []),
-        anti_patterns=state.get("anti_patterns", []),
-    )
+    prompt = f"""Verify that this code actually uses the recommended procedural generation technique.
+
+Technique: {state.get("technique", "")}
+
+Expected fingerprint imports: {state.get("fingerprint_imports", [])}
+Expected code patterns: {state.get("fingerprint_patterns", [])}
+Anti-patterns (indicate generate-and-test fallback): {state.get("anti_patterns", [])}
+
+Code to verify:
+{code}
+
+Check if the code contains the expected fingerprint signals and whether it contains any anti-patterns.
+If it doesn't use the technique, identify what it defaulted to instead."""
+
+    result = call(prompt, TechniqueVerification)
 
     if result.uses_technique:
         return True

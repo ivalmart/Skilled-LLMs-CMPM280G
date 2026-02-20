@@ -5,7 +5,6 @@ import shutil
 import subprocess
 from pathlib import Path
 from datetime import datetime, timezone
-sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 
 import _log
 
@@ -19,10 +18,9 @@ PY = [UV, "run", "--project", str(ROOT), "python"] if UV else [sys.executable]
 
 def run(script, args=None, stdin_data=None, fatal=True):
     cmd = PY + [str(SCRIPTS / script)] + (args or [])
-    env = {**os.environ, "BAML_LOG": "off"}
     proc = subprocess.Popen(
         cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-        stderr=sys.stderr, text=True, env=env,
+        stderr=sys.stderr, text=True,
     )
     stdout, _ = proc.communicate(input=stdin_data)
     if proc.returncode != 0:
@@ -45,7 +43,7 @@ def execute(code, imports):
     trial = SCRIPTS / "_trial.py"
     trial.write_text(code, encoding="utf-8")
 
-    env = {**os.environ, "MPLBACKEND": "Agg", "BAML_LOG": "off"}
+    env = {**os.environ, "MPLBACKEND": "Agg"}
     try:
         result = subprocess.run(
             PY + [str(trial)], capture_output=True, text=True,

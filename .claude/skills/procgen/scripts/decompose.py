@@ -1,21 +1,26 @@
 import sys
 import json
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
-
-from dotenv import load_dotenv
-load_dotenv(Path(__file__).resolve().parents[4] / ".env")
-
 import _log
-from baml_client.sync_client import b
+from llm import call
+from _types import ProcgenProblem
 
 
 def main():
+    request = sys.argv[1]
     _log.haiku("DecomposeProblem")
+    prompt = f"""Analyze this procedural generation request and decompose it into a structured problem.
+
+Request: {request}
+
+Identify:
+- The output structure type (GRID_2D, GRAPH, TREE, SEQUENCE, MESH_3D)
+- All constraints (CONNECTIVITY, PLACEMENT, ORDERING, DISTRIBUTION, ADJACENCY, STRUCTURAL)
+- The scale (small/medium/large)
+- Whether it needs to run in realtime"""
     try:
-        result = b.DecomposeProblem(sys.argv[1])
+        result = call(prompt, ProcgenProblem)
     except Exception as e:
-        _log.fail(f"BAML call failed: {type(e).__name__}")
+        _log.fail(f"LLM call failed: {type(e).__name__}: {e}")
         sys.exit(1)
     d = result.model_dump()
     _log.detail(f"-> {d['output_structure']}, {len(d['constraints'])} constraints")

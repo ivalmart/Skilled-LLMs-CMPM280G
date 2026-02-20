@@ -1,26 +1,38 @@
 import sys
 import json
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
-
-from dotenv import load_dotenv
-load_dotenv(Path(__file__).resolve().parents[4] / ".env")
-
 import _log
-from baml_client.sync_client import b
+from llm import call
+from _types import LazyVerdict
 
 
 def main():
     data = json.loads(sys.stdin.read())
     _log.haiku("CheckLazy")
+
+    prompt = f"""You are checking if a procedural generator's output is degenerate.
+Degenerate means the code technically runs but produces minimal, trivial,
+or exploitative output that satisfies constraints by cheating.
+
+Request: {data["request"]}
+Technique: {data["technique_name"]}
+
+Program output:
+{data["stdout"]}
+
+Examples of degenerate output:
+- A dungeon that is just a thin corridor hugging walls
+- A maze with no branching (single path)
+- A terrain that is completely flat except one spike
+- A level where all items cluster in one corner
+- A solver that hits the exact minimum constraint and stops
+
+Set degenerate=true if the output looks like it's gaming the constraints
+rather than producing genuinely interesting content. Explain why in reason."""
+
     try:
-        verdict = b.CheckLazy(
-            request=data["request"],
-            technique_name=data["technique_name"],
-            stdout=data["stdout"],
-        )
+        verdict = call(prompt, LazyVerdict)
     except Exception as e:
-        _log.fail(f"BAML call failed: {type(e).__name__}")
+        _log.fail(f"LLM call failed: {type(e).__name__}")
         sys.exit(1)
     d = verdict.model_dump()
     if d.get("degenerate"):

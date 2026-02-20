@@ -3,7 +3,7 @@ name = "procgen-rlm"
 version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
-    "baml-py==0.219.0",
+    "openai",
     "requests",
     "typing_extensions",
     "pydantic",

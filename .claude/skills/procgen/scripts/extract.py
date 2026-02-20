@@ -1,44 +1,39 @@
 import sys
 import json
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
-
-from dotenv import load_dotenv
-load_dotenv(Path(__file__).resolve().parents[4] / ".env")
-
 import _log
-from baml_client.sync_client import b
-from baml_client.types import ProcgenProblem, Constraint, OutputType, ConstraintType
-
-
-def rebuild(d):
-    return ProcgenProblem(
-        output_structure=OutputType(d["output_structure"]),
-        constraints=[
-            Constraint(
-                name=c["name"],
-                type=ConstraintType(c["type"]),
-                description=c["description"],
-            )
-            for c in d["constraints"]
-        ],
-        scale=d["scale"],
-        realtime=d["realtime"],
-    )
+from llm import call
+from _types import TechniqueCard
 
 
 def main():
     data = json.loads(sys.stdin.read())
-    problem = rebuild(data["problem"])
+    problem = data["problem"]
+    constraints = ", ".join(
+        f"{c['name']} ({c['type']})" for c in problem.get("constraints", [])
+    )
     _log.haiku("ExtractTechnique")
+    prompt = f"""Extract a procedural generation technique from this source content.
+
+Source URL: {data["url"]}
+Source content (may be truncated):
+{data["content"]}
+
+The technique should be relevant to this problem:
+- Output structure: {problem["output_structure"]}
+- Constraints: {constraints}
+- Scale: {problem["scale"]}
+
+Extract:
+- The technique name and category
+- Which problem types and constraint types it handles
+- Tradeoffs (pros and cons)
+- Implementation details (language, dependencies, a short code pattern)
+- A fingerprint for verification (imports, file artifacts, code patterns that indicate this technique is being used)
+- Anti-patterns (code patterns that indicate the model fell back to generate-and-test instead of using this technique)"""
     try:
-        result = b.ExtractTechnique(
-            content=data["content"],
-            url=data["url"],
-            problem=problem,
-        )
+        result = call(prompt, TechniqueCard)
     except Exception as e:
-        _log.fail(f"BAML call failed: {type(e).__name__}")
+        _log.fail(f"LLM call failed: {type(e).__name__}")
         sys.exit(1)
     d = result.model_dump()
     _log.detail(f"-> {d.get('name', '?')}")
