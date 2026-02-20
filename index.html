@@ -410,7 +410,7 @@ const concepts = [
   { id:"small", num:"03", title:"Where does the small model run?",
     chips:["decompose","vsrc","extract","synth","hook"],
     tldr:"8 SMALL_MODEL calls handle the entire pipeline — including code synthesis. The big model never generates code.",
-    body:`<p>Eight places — all via BAML functions calling <span class="tag tag-h">SMALL_MODEL</span> through OpenRouter:</p>
+    body:`<p>Eight places — all via <code>llm.call(prompt, PydanticModel)</code> calling <span class="tag tag-h">SMALL_MODEL</span> through OpenRouter:</p>
 <pre>DecomposeProblem()  → parses request into ProcgenProblem
 VerifySource()      → classifies a web source's trust tier
 ExtractTechnique()  → builds a TechniqueCard from a document
@@ -420,34 +420,40 @@ CheckLazy()         → detects degenerate trivial output
 WatchRefinement()   → gates refinements against cosmetic changes
 VerifyTechnique()   → checks generated code for anti-patterns</pre>
 <p>The <strong>main model</strong> (whatever Claude Code runs — Opus, Sonnet, doesn't matter) is a <strong>pass-through</strong>. It runs <code>/procgen</code>, gets back a JSON blob with a complete Python file in the <code>code</code> field, and writes it to disk. Zero code synthesis by the big model.</p>
-<p>This is the core design goal: the <strong>entire intelligence pipeline is cheap</strong>. Eight BAML calls handle everything — decomposition, verification, extraction, synthesis, refinement, degenerate detection, warden gating, and technique checking. You could swap SMALL_MODEL for any model that handles structured output. The big model is just an I/O layer.</p>
-<p class="file">clients.baml → baml_src/clients.baml (model config)</p>`,
-    quiz:{ q:"How many BAML functions call SMALL_MODEL?",
+<p>This is the core design goal: the <strong>entire intelligence pipeline is cheap</strong>. Eight <code>llm.call()</code> invocations handle everything — decomposition, verification, extraction, synthesis, refinement, degenerate detection, warden gating, and technique checking. You could swap SMALL_MODEL for any model that handles structured output. The big model is just an I/O layer.</p>
+<p class="file">llm.py → .claude/skills/procgen/scripts/llm.py (OpenRouter client + JSON parser)</p>`,
+    quiz:{ q:"How many LLM functions call SMALL_MODEL?",
       opts:["5","6","8","All 13 stages"],
-      ans:2, why:"Eight BAML functions call SMALL_MODEL: DecomposeProblem, VerifySource, ExtractTechnique, SynthesizeCode, RefineCode, CheckLazy, WatchRefinement, and VerifyTechnique. The rest is orchestration code (Python scripts, vector search)." }
+      ans:2, why:"Eight llm.call() invocations call SMALL_MODEL: DecomposeProblem, VerifySource, ExtractTechnique, SynthesizeCode, RefineCode, CheckLazy, WatchRefinement, and VerifyTechnique. The rest is orchestration code (Python scripts, vector search)." }
   },
-  { id:"baml", num:"04", title:"Why BAML?",
+  { id:"structured", num:"04", title:"How does structured output work?",
     chips:["decompose","vsrc","extract","hook"],
-    tldr:"BAML gives small models typed, validated structured output instead of unreliable raw JSON.",
+    tldr:"Pydantic models + a robust JSON parser give small models typed, validated structured output.",
     body:`<p>Small models are <strong>unreliable at structured output</strong>. Ask one to return JSON and it might:</p>
 <pre>{"output_structure": "GRID_2D",     ← correct
  constraints: [                      ← missing quotes
    {name: "walls", type: STRUCTURAL} ← unquoted enum
  ]}</pre>
-<p>BAML defines <strong>typed schemas</strong> and generates a Python client that parses + validates + retries with SAP (Structured Argument Parsing). You get real Pydantic objects:</p>
+<p>The pipeline uses <code>llm.call(prompt, PydanticModel)</code> which:</p>
+<ol>
+<li>Appends the Pydantic JSON schema to the prompt</li>
+<li>Requests <code>response_format: json_object</code> from OpenRouter</li>
+<li>Parses with a robust extractor (strips markdown fences, brace-counting for embedded code)</li>
+<li>Validates with <code>PydanticModel.model_validate(data)</code></li>
+</ol>
 <pre>class ProcgenProblem(BaseModel):
     output_structure: OutputType    # enum, not string
     constraints: list[Constraint]   # typed, not dict
     scale: str
     realtime: bool</pre>
-<p>Every pipeline stage exchanges <strong>typed structs</strong>, not raw strings. If the small model hallucinates the wrong type, BAML catches it. The design fiction calls this "nothing is a black box — every stage produces typed, inspectable output."</p>
-<p class="file">baml_src/types.baml</p> <p class="file">baml_src/functions.baml</p>`,
+<p>Every pipeline stage exchanges <strong>typed structs</strong>, not raw strings. All fields have defaults so partial responses still validate. The design fiction calls this "nothing is a black box — every stage produces typed, inspectable output."</p>
+<p class="file">_types.py → .claude/skills/procgen/scripts/_types.py</p> <p class="file">llm.py → .claude/skills/procgen/scripts/llm.py</p>`,
     quiz:{ q:"What happens when SMALL_MODEL returns malformed JSON?",
       opts:["The pipeline crashes with an error",
-            "BAML catches it, validates, and retries automatically",
+            "The robust parser extracts JSON, then Pydantic validates it",
             "The main model fixes the JSON",
             "The user gets an error message to retry"],
-      ans:1, why:"BAML defines typed schemas and generates a Python client with SAP (Structured Argument Parsing) that parses, validates, and retries. You get real Pydantic objects, not raw strings." }
+      ans:1, why:"llm.py has a multi-stage parser: try json.loads, strip markdown fences, brace-counting extraction. Then Pydantic model_validate with default fields handles partial responses." }
   },
   { id:"hook", num:"05", title:"How does the verification hook work?",
     chips:["synth","active","hook","dungeon"],
@@ -501,25 +507,24 @@ GENERATED      → AI-generated (skipped)</pre>
   },
   { id:"grow", num:"07", title:"How do you grow the system?",
     chips:["techs","extract","memory"],
-    tldr:"The system grows automatically by caching technique cards. You can also add corpus files or extend BAML types.",
+    tldr:"The system grows automatically by caching technique cards. You can also add corpus files or extend Pydantic types.",
     body:`<p>Three paths, ordered by effort:</p>
 <p><strong>1. Automatic (zero effort)</strong> — every time the pipeline runs and memory misses, it searches the web, verifies sources, extracts technique cards, and <strong>appends them to <code>techniques.md</code></strong>. Next session, that technique is a cache hit.</p>
 <p><strong>2. Add corpus</strong> — drop a <code>.txt</code> file in <code>corpus/</code>. The indexer (<code>index_corpus.py</code>) computes embeddings and moves it to <code>corpus/indexed/</code>. It becomes searchable immediately as a pre-trusted source.</p>
-<p><strong>3. Add technique types</strong> — extend the BAML enums in <code>baml_src/types.baml</code>:</p>
+<p><strong>3. Add technique types</strong> — extend the enums in <code>_types.py</code>:</p>
 <pre># Add a new constraint type
-enum ConstraintType {
-  CONNECTIVITY
-  PLACEMENT
-  ...
-  SYMMETRY   # new!</pre>
-<p>Then regenerate the client: <code>baml-cli generate</code></p>
+class ConstraintType(str, Enum):
+    CONNECTIVITY = "CONNECTIVITY"
+    PLACEMENT = "PLACEMENT"
+    ...
+    SYMMETRY = "SYMMETRY"   # new!</pre>
 <p class="file">corpus/ → drop .txt files here</p>
 <p class="file">.claude/knowledge/techniques.md → self-populating</p>`,
     quiz:{ q:"What's the zero-effort way to grow lakitu's knowledge?",
       opts:["Edit techniques.md manually",
             "Run the pipeline — it auto-caches new techniques on miss",
             "Add .txt files to the corpus directory",
-            "Extend the BAML enum types"],
+            "Extend the Pydantic enum types"],
       ans:1, why:"Every pipeline run that misses memory will search, verify, extract, and cache the technique card automatically. Next time, it's a cache hit." }
   },
   { id:"evolution", num:"08", title:"What went wrong before?",

@@ -4,8 +4,8 @@
   "node_types": {
     "stage":     { "label": "Pipeline Stage",   "color": "#3fb950" },
     "skill":     { "label": "Skill / Script",   "color": "#d29922" },
-    "baml_func": { "label": "BAML Function",    "color": "#bc8cff" },
-    "baml_type": { "label": "BAML Type",        "color": "#79c0ff" },
+    "llm_func":  { "label": "LLM Function",     "color": "#bc8cff" },
+    "pydantic":  { "label": "Pydantic Model",   "color": "#79c0ff" },
     "state":     { "label": "State / Memory",   "color": "#f78166" },
     "source":    { "label": "Knowledge Source",  "color": "#56d4dd" },
     "external":  { "label": "External Tool",    "color": "#8b949e" },
@@ -121,7 +121,7 @@
       "id": "code_synth",
       "label": "Code Synthesis",
       "type": "stage",
-      "description": "Stage 7: Claude adapts the technique card's implementation pattern to the user's specific requirements. Receives concrete working code, not descriptions.",
+      "description": "Stage 7: SMALL_MODEL synthesizes code from the technique card. Max 3 retries with runtime verification, lazy check, and warden gating.",
       "layer": 9, "col": 0
     },
     {
@@ -134,65 +134,65 @@
     {
       "id": "fn_decompose",
       "label": "DecomposeProblem()",
-      "type": "baml_func",
-      "description": "BAML function: request string -> ProcgenProblem. Runs on Haiku via OpenRouter.",
-      "file": "baml_src/functions.baml",
+      "type": "llm_func",
+      "description": "LLM call: request string -> ProcgenProblem. Runs on SMALL_MODEL via OpenRouter.",
+      "file": ".claude/skills/procgen/scripts/decompose.py",
       "layer": 3, "col": -3
     },
     {
       "id": "fn_verify_src",
       "label": "VerifySource()",
-      "type": "baml_func",
-      "description": "BAML function: (url, title, snippet) -> Source. Classifies source category and freshness.",
-      "file": "baml_src/functions.baml",
+      "type": "llm_func",
+      "description": "LLM call: (url, title, snippet) -> Source. Classifies source category and freshness.",
+      "file": ".claude/skills/procgen/scripts/verify_source.py",
       "layer": 5, "col": -3
     },
     {
       "id": "fn_extract",
       "label": "ExtractTechnique()",
-      "type": "baml_func",
-      "description": "BAML function: (content, url, problem) -> TechniqueCard. Extracts technique with implementation patterns.",
-      "file": "baml_src/functions.baml",
+      "type": "llm_func",
+      "description": "LLM call: (content, url, problem) -> TechniqueCard. Extracts technique with implementation patterns.",
+      "file": ".claude/skills/procgen/scripts/extract.py",
       "layer": 6, "col": -3
     },
     {
       "id": "fn_verify_tech",
       "label": "VerifyTechnique()",
-      "type": "baml_func",
-      "description": "BAML function: (code, technique, fingerprint, anti_patterns) -> TechniqueVerification. Pass/fail check.",
-      "file": "baml_src/functions.baml",
+      "type": "llm_func",
+      "description": "LLM call: (code, technique, fingerprint, anti_patterns) -> TechniqueVerification. Pass/fail check.",
+      "file": ".claude/hooks/verify_procgen.py",
       "layer": 10, "col": -3
     },
     {
       "id": "t_problem",
       "label": "ProcgenProblem",
-      "type": "baml_type",
-      "description": "Typed struct: output_structure (GRID_2D|GRAPH|TREE|SEQUENCE|MESH_3D), constraints[] (name + ConstraintType + description), scale, realtime.",
-      "file": "baml_src/types.baml",
+      "type": "pydantic",
+      "description": "Pydantic model: output_structure (GRID_2D|GRAPH|TREE|SEQUENCE|MESH_3D), constraints[] (name + ConstraintType + description), scale, realtime.",
+      "file": ".claude/skills/procgen/scripts/_types.py",
       "layer": 3, "col": -5
     },
     {
       "id": "t_card",
       "label": "TechniqueCard",
-      "type": "baml_type",
-      "description": "Typed struct: name, category[], problem_types[], constraint_types[], description, tradeoffs[], implementation (language, deps, pattern, complexity), sources[], fingerprint (imports, artifacts, patterns), anti_patterns[], confidence.",
-      "file": "baml_src/types.baml",
+      "type": "pydantic",
+      "description": "Pydantic model: name, category[], problem_types[], constraint_types[], description, tradeoffs[], implementation (language, deps, pattern, complexity), sources[], fingerprint (imports, artifacts, patterns), anti_patterns[], confidence.",
+      "file": ".claude/skills/procgen/scripts/_types.py",
       "layer": 6, "col": -5
     },
     {
       "id": "t_source",
       "label": "Source",
-      "type": "baml_type",
-      "description": "Typed struct: url, domain, title, category (ACADEMIC|TUTORIAL|BLOG_UNKNOWN|...), freshness (CURRENT|TIMELESS|STALE|...), signals[], should_use.",
-      "file": "baml_src/types.baml",
+      "type": "pydantic",
+      "description": "Pydantic model: url, domain, title, category (ACADEMIC|TUTORIAL|BLOG_UNKNOWN|...), freshness (CURRENT|TIMELESS|STALE|...), signals[], should_use.",
+      "file": ".claude/skills/procgen/scripts/_types.py",
       "layer": 5, "col": -5
     },
     {
       "id": "t_verify",
       "label": "TechniqueVerification",
-      "type": "baml_type",
-      "description": "Typed struct: uses_technique (bool), evidence[], anti_patterns_found[], defaulted_to. The hook's decision structure.",
-      "file": "baml_src/types.baml",
+      "type": "pydantic",
+      "description": "Pydantic model: uses_technique (bool), evidence[], anti_patterns_found[], defaulted_to. The hook's decision structure.",
+      "file": ".claude/skills/procgen/scripts/_types.py",
       "layer": 10, "col": -5
     },
     {
@@ -220,10 +220,10 @@
       "layer": 4, "col": 3
     },
     {
-      "id": "haiku",
-      "label": "Haiku",
+      "id": "small_model",
+      "label": "SMALL_MODEL",
       "type": "external",
-      "description": "Claude Haiku 4.5 via OpenRouter. The 'small model that can run on your phone.' All four BAML functions use this — never the main model.",
+      "description": "Configurable via env var (default: anthropic/claude-3.5-haiku). Called through OpenRouter via llm.py. All 8 LLM functions use this — never the main model.",
       "layer": 7, "col": -5
     },
     {
@@ -310,6 +310,14 @@
       "description": "Chapter 8 of PCG in Games textbook by Nelson & Smith. Covers ASP for maze/level generation. The pre-trusted local corpus document that seeded the first technique card.",
       "file": "corpus/indexed/ASP.txt",
       "layer": 3, "col": 3
+    },
+    {
+      "id": "llm_module",
+      "label": "llm.py",
+      "type": "skill",
+      "description": "Shared LLM client. OpenAI SDK pointing at OpenRouter with robust JSON parser (markdown fence stripping, brace-counting extraction). call(prompt, PydanticModel) -> validated instance.",
+      "file": ".claude/skills/procgen/scripts/llm.py",
+      "layer": 7, "col": -3
     }
   ],
   "edges": [
@@ -341,10 +349,11 @@
     { "source": "fn_extract",       "target": "t_card",           "type": "produces" },
     { "source": "fn_verify_tech",   "target": "t_verify",         "type": "produces" },
 
-    { "source": "fn_decompose",     "target": "haiku",            "type": "calls",    "label": "via OpenRouter" },
-    { "source": "fn_verify_src",    "target": "haiku",            "type": "calls" },
-    { "source": "fn_extract",       "target": "haiku",            "type": "calls" },
-    { "source": "fn_verify_tech",   "target": "haiku",            "type": "calls" },
+    { "source": "fn_decompose",     "target": "llm_module",       "type": "calls" },
+    { "source": "fn_verify_src",    "target": "llm_module",       "type": "calls" },
+    { "source": "fn_extract",       "target": "llm_module",       "type": "calls" },
+    { "source": "fn_verify_tech",   "target": "llm_module",       "type": "calls" },
+    { "source": "llm_module",       "target": "small_model",      "type": "calls",    "label": "via OpenRouter" },
 
     { "source": "memory_lookup",    "target": "techniques_md",    "type": "reads" },
     { "source": "memory_write",     "target": "techniques_md",    "type": "writes" },
