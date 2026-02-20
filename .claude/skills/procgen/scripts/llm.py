@@ -84,7 +84,7 @@ def call(prompt, cls):
     resp = _get().chat.completions.create(
         model=MODEL,
         messages=[{"role": "user", "content": f"{prompt}\n\nRespond with a single JSON object matching this schema:\n{schema}"}],
-        response_format={"type": "json_object"},
+        temperature=0,
     )
     text = resp.choices[0].message.content
     data = _parse(text)

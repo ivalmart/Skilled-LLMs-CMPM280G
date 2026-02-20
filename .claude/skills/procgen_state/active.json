@@ -1,22 +1,7 @@
 {
   "technique": "Answer Set Programming (ASP)",
-  "fingerprint_imports": [
-    "clingo",
-    "dlv",
-    "gringo"
-  ],
-  "fingerprint_patterns": [
-    "fact(:- .).",
-    "rule_head :- rule_body.",
-    ":- integrity_constraint.",
-    "{choice_variable} = constraint_expression.",
-    "#minimize{...} or #maximize{...}",
-    "adj(X,Y) :- X=0..N, Y=0..M.",
-    "reachable(Node) :- start(Node).",
-    "reachable(Next) :- reachable(Current), edge(Current, Next).",
-    "contains(Location, element) :- constraint logic.",
-    "not predicate(X)"
-  ],
+  "fingerprint_imports": [],
+  "fingerprint_patterns": [],
   "anti_patterns": [
     "Absence of constraint declarations (:- statements)",
     "Only facts without logical rules (pure generate-and-test fallback)",
@@ -27,6 +12,6 @@
     "Monte Carlo sampling to find valid solutions",
     "Hard-coded generation logic with manual pathfinding instead of logic rules"
   ],
-  "implementation_pattern": "% Facts: game constants\nmax_grid(5).\nstart((1,1)).\n\n% Game logic rules\nimpassable(Tile) :- contains(Tile, wall).\nreachable(Tile) :- start(Tile).\nreachable(Next) :- reachable(Current), adjacent(Current, Next), not impassable(Next).\n\n% Content generation constraints\n{contains((X,Y), wall) : grid(X,Y)} = WallCount :- WallCount >= MinWalls, WallCount <= MaxWalls.\n\n% Hard constraints\n:- not reachable(gem_pos).\n:- not reachable(altar_pos).\n:- gem_pos = altar_pos.\n:- gem_pos = start(_).\n\n% Optimization (optional)\n#minimize{Distance : distance(gem_pos, altar_pos, Distance)}.",
-  "timestamp": "2026-02-15T23:42:43.901752+00:00"
+  "implementation_pattern": "|",
+  "timestamp": "2026-02-20T03:53:31.340533+00:00"
 }
