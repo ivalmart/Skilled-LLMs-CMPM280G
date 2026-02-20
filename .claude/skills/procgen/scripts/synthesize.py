@@ -91,7 +91,8 @@ RULES:
 - Output a single complete Python file that runs standalone
 - Use the technique's implementation pattern, not random-retry
 - Include a main() that demonstrates the generator with a printed example
-- Keep it under 150 lines"""
+- Keep it under 150 lines
+- Ensure the file is syntactically complete and valid Python"""
 
 
 def _refine(request, t, broken, errors, notes):
@@ -120,7 +121,7 @@ Errors encountered:
 RULES:
 - Fix the actual errors, don't just rename variables or add comments
 - Keep using the technique's implementation pattern
-- Output a complete runnable Python file
+- Output a complete runnable Python file with valid syntax
 - Keep it under 150 lines"""
 
 

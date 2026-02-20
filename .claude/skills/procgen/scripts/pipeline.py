@@ -102,7 +102,7 @@ def main():
     # 2. Memory lookup
     _log.stage("MEMORY LOOKUP")
     cached = run("memory.py", ["lookup"], json.dumps(problem))
-    if cached and cached[0]["score"] >= 0.5:
+    if cached and cached[0]["score"] >= 0.6:
         technique = cached[0]["technique"]
         _log.ok(f"cache hit: {technique['name']} (score={cached[0]['score']:.2f})")
         _log.elapsed()
@@ -112,9 +112,9 @@ def main():
     _log.detail(f"cache miss (best score={best_score:.2f})")
     _log.elapsed()
 
-    # 3. Build query
+    # 3. Build query — include original request keywords
     ctypes = " ".join(c["type"] for c in problem.get("constraints", []))
-    query = f"procedural generation {problem['output_structure']} {ctypes}"
+    query = f"procedural generation {request} {problem['output_structure']} {ctypes}"
 
     # 3a. Corpus search
     _log.stage("CORPUS SEARCH")
@@ -158,7 +158,7 @@ def main():
         run("memory.py", ["save"], json.dumps(card))
     _log.elapsed()
 
-    # 6. Select best technique
+    # 6. Select best technique (prefer web results over corpus on ties)
     _log.stage("SELECT")
     best = cards[0]
     best_overlap = 0
@@ -167,7 +167,7 @@ def main():
         overlap = len(set(card.get("constraint_types", [])) & ctarget)
         name = card.get("name", "?")
         _log.detail(f"  {name}: overlap={overlap}")
-        if overlap > best_overlap:
+        if overlap >= best_overlap:
             best_overlap = overlap
             best = card
     _log.ok(f"selected: {best.get('name', '?')} (overlap={best_overlap})")
@@ -202,6 +202,7 @@ def emit(request, problem, technique):
     llm_failures = 0
     warden_rejections = 0
     warden_notes = ""
+    last_degenerate = False
 
     while attempt < MAX_RETRIES and llm_failures < MAX_LLM_FAILURES:
         if attempt == 0 or code is None:
@@ -271,11 +272,13 @@ def emit(request, problem, technique):
                 "request": request,
                 "technique_name": technique.get("name", ""),
                 "stdout": stdout_or_etype or "",
+                "code": code,
             }), fatal=False)
             if lazy and lazy.get("degenerate"):
                 reason = lazy.get("reason", "degenerate output")
                 _log.fail(reason)
                 _log.elapsed()
+                last_degenerate = True
                 errors.append({
                     "attempt": attempt + 1,
                     "error_type": "DegenerateOutput",
@@ -286,6 +289,7 @@ def emit(request, problem, technique):
                 prev_code = code
                 attempt += 1
                 continue
+            last_degenerate = False
             _log.ok("output looks genuine")
             _log.elapsed()
             break
@@ -316,6 +320,16 @@ def emit(request, problem, technique):
         except SystemExit:
             _log.fail("annotation failed (non-fatal)")
         _log.elapsed()
+
+    if last_degenerate:
+        _log.fail("all attempts produced degenerate output")
+        print(json.dumps({
+            "error": "all attempts produced degenerate output",
+            "problem": problem,
+            "technique": technique.get("name", ""),
+            "retry_count": attempt,
+        }, indent=2))
+        return
 
     output = {
         "problem": problem,

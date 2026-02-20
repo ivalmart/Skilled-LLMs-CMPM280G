@@ -391,7 +391,7 @@ const concepts = [
  4. Verify Sources  → classify by trust and freshness
  5. Extract         → build TechniqueCard structs
  6. Write Memory    → append to techniques.md
- 7. Select          → score by embedding similarity
+ 7. Select          → score by constraint overlap (web preferred on ties)
  8. Synthesize      → SMALL_MODEL generates the complete code
  9. Runtime Check   → execute in sandbox (timeout 30s)
 10. Lazy Check      → detect degenerate "empty box" output
@@ -438,7 +438,7 @@ VerifyTechnique()   → checks generated code for anti-patterns</pre>
 <ol>
 <li>Appends the Pydantic JSON schema to the prompt</li>
 <li>Requests <code>response_format: json_object</code> from OpenRouter</li>
-<li>Parses with a robust extractor (strips markdown fences, brace-counting for embedded code)</li>
+<li>Parses with a robust extractor (strips markdown fences, brace-counting, <code>_escape_newlines()</code> for code fields with literal newlines)</li>
 <li>Validates with <code>PydanticModel.model_validate(data)</code></li>
 </ol>
 <pre>class ProcgenProblem(BaseModel):
@@ -497,7 +497,7 @@ TUTORIAL       → structured, known platform (medium trust)
 BLOG_REPUTABLE → known practitioner (medium trust)
 BLOG_UNKNOWN   → random blog (skipped)
 GENERATED      → AI-generated (skipped)</pre>
-<p>Corpus results <strong>always rank higher</strong> than web results in the merged source list.</p>`,
+<p>Corpus results appear first in the merged source list, but during <strong>technique selection</strong>, web results are preferred on constraint-overlap ties — since the web search was specifically triggered for this request.</p>`,
     quiz:{ q:"A blog post from an unknown author would be classified as:",
       opts:["TUTORIAL — medium trust",
             "BLOG_UNKNOWN — skipped entirely",
@@ -509,7 +509,7 @@ GENERATED      → AI-generated (skipped)</pre>
     chips:["techs","extract","memory"],
     tldr:"The system grows automatically by caching technique cards. You can also add corpus files or extend Pydantic types.",
     body:`<p>Three paths, ordered by effort:</p>
-<p><strong>1. Automatic (zero effort)</strong> — every time the pipeline runs and memory misses, it searches the web, verifies sources, extracts technique cards, and <strong>appends them to <code>techniques.md</code></strong>. Next session, that technique is a cache hit. Cache scores use <strong>embedding similarity</strong> (all-MiniLM-L6-v2) — the problem description is compared against each technique's description via cosine similarity. Techniques that accumulate <code>syntax_notes</code> from repeated failures get penalized (10% per note, capped at 80%). A technique with enough failures drops below the 0.5 hit threshold, triggering a fresh web search instead of reusing broken knowledge.</p>
+<p><strong>1. Automatic (zero effort)</strong> — every time the pipeline runs and memory misses, it searches the web, verifies sources, extracts technique cards, and <strong>appends them to <code>techniques.md</code></strong>. Next session, that technique is a cache hit. Cache scores use <strong>embedding similarity</strong> (all-MiniLM-L6-v2) — the problem description is compared against each technique's description via cosine similarity. Techniques that accumulate <code>syntax_notes</code> from repeated failures get penalized (10% per note, capped at 80%). A technique with enough failures drops below the 0.6 hit threshold, triggering a fresh web search instead of reusing broken knowledge.</p>
 <p><strong>2. Add corpus</strong> — drop a <code>.txt</code> file in <code>corpus/</code>. The indexer (<code>index_corpus.py</code>) computes embeddings and moves it to <code>corpus/indexed/</code>. It becomes searchable immediately as a pre-trusted source.</p>
 <p><strong>3. Add technique types</strong> — extend the enums in <code>_types.py</code>:</p>
 <pre># Add a new constraint type
@@ -593,7 +593,7 @@ clingo.Control().solve()      # zero retry loops</pre>
 5. Lazy check → detect degenerate output
 6. Call RefineCode with errors + syntax_notes
 7. Repeat (up to 3 code failures + 3 LLM failures)</pre>
-<p>The <strong>lazy check</strong> (<code>CheckLazy</code>) catches a failure mode where the code <em>runs successfully</em> but satisfies constraints in the most trivial way possible — like making the entire dungeon one big open room with no walls. It flags these as <code>DegenerateOutput</code> errors that feed back into refinement.</p>
+<p>The <strong>lazy check</strong> (<code>CheckLazy</code>) catches a failure mode where the code <em>runs successfully</em> but satisfies constraints in the most trivial way possible — like making the entire dungeon one big open room with no walls. When stdout is empty (e.g. matplotlib visual output), the lazy check <strong>inspects the code itself</strong> for real algorithmic logic. It flags degenerate results as <code>DegenerateOutput</code> errors that feed back into refinement. If <strong>all retries produce degenerate output</strong>, the pipeline refuses to emit — it returns an error instead of silently passing bad code through.</p>
 <p>Each error is captured as a typed <code>RefinementError</code>:</p>
 <pre>class RefinementError {
   attempt int          // which try
@@ -602,7 +602,7 @@ clingo.Control().solve()      # zero retry loops</pre>
   error_line string    // offending line
   traceback string     // full traceback
 }</pre>
-<p>After the loop completes (success or max retries), any lessons learned get persisted as <strong>syntax_notes</strong> on the technique card in <code>techniques.md</code>. These notes serve double duty: the first synthesis attempt already knows the pitfalls, <em>and</em> each note penalizes the technique's embedding similarity score by 10% (capped at 80%). A technique that keeps failing will eventually fall below the 0.5 cache-hit threshold, forcing a fresh web search for alternatives.</p>
+<p>After the loop completes (success or max retries), any lessons learned get persisted as <strong>syntax_notes</strong> on the technique card in <code>techniques.md</code>. These notes serve double duty: the first synthesis attempt already knows the pitfalls, <em>and</em> each note penalizes the technique's embedding similarity score by 10% (capped at 80%). A technique that keeps failing will eventually fall below the 0.6 cache-hit threshold, forcing a fresh web search for alternatives.</p>
 <p class="file">pipeline.py → execute() + emit() retry loop</p>`,
     quiz:{ q:"What happens to errors encountered during the retry loop?",
       opts:["They're logged and discarded",

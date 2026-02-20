@@ -9,6 +9,16 @@ def main():
     data = json.loads(sys.stdin.read())
     _log.haiku("CheckLazy")
 
+    stdout = data.get("stdout", "")
+    code = data.get("code", "")
+
+    if stdout.strip():
+        evidence = f"Program stdout:\n{stdout}"
+    elif code.strip():
+        evidence = f"Program produced no stdout (likely visual output like matplotlib).\nGenerated code:\n{code}"
+    else:
+        evidence = "Program produced no output and no code was provided."
+
     prompt = f"""You are checking if a procedural generator's output is degenerate.
 Degenerate means the code technically runs but produces minimal, trivial,
 or exploitative output that satisfies constraints by cheating.
@@ -16,8 +26,7 @@ or exploitative output that satisfies constraints by cheating.
 Request: {data["request"]}
 Technique: {data["technique_name"]}
 
-Program output:
-{data["stdout"]}
+{evidence}
 
 Examples of degenerate output:
 - A dungeon that is just a thin corridor hugging walls
@@ -25,6 +34,11 @@ Examples of degenerate output:
 - A terrain that is completely flat except one spike
 - A level where all items cluster in one corner
 - A solver that hits the exact minimum constraint and stops
+- Code that imports libraries but never calls the core algorithm
+- A placeholder main() that does nothing meaningful
+
+If stdout is empty but the code contains real algorithmic logic (noise generation,
+pathfinding, constraint solving, etc.) and produces visual output, that is NOT degenerate.
 
 Set degenerate=true if the output looks like it's gaming the constraints
 rather than producing genuinely interesting content. Explain why in reason."""

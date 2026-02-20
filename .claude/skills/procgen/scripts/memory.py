@@ -20,11 +20,30 @@ def load():
         lines = section.strip().split("\n")
         name = lines[0].removeprefix("## ").strip()
         fields = {"name": name}
-        for line in lines[1:]:
+        
+        i = 1
+        while i < len(lines):
+            line = lines[i]
             m = re.match(r"^- (\w[\w_]*): (.+)$", line)
             if not m:
+                i += 1
                 continue
+            
             key, val = m.group(1), m.group(2)
+            
+            # Handle YAML block scalars (|)
+            if val.strip() == "|":
+                block_lines = []
+                i += 1
+                # Capture indented lines that follow
+                while i < len(lines) and (lines[i].startswith("  ") or lines[i].strip() == ""):
+                    if lines[i].startswith("  "):
+                        block_lines.append(lines[i][2:])  # remove 2-space indent
+                    i += 1
+                val = "\n".join(block_lines).rstrip()
+                i -= 1  # back up one since loop will increment
+            
+            # Process based on field type
             if key in ("problem_types", "constraint_types", "fingerprint_imports",
                         "fingerprint_artifacts", "fingerprint_patterns",
                         "anti_patterns", "implementation_dependencies",
@@ -38,6 +57,9 @@ def load():
                         fields[key].append({"pro": parts[0].strip(), "con": parts[1].strip()})
             else:
                 fields[key] = val
+            
+            i += 1
+        
         techniques.append(fields)
     return techniques
 
@@ -98,70 +120,57 @@ def save(card):
     tradeoffs = "; ".join(
         f"{t['pro']} / {t['con']}" for t in card.get("tradeoffs", [])
     )
-    sources = ", ".join(
-        f"{s['url']} ({s.get('category', '')}, {s.get('accessed', '')})"
-        for s in card.get("sources", [])
-    )
-    impl = card.get("implementation", {})
-    fp = card.get("fingerprint", {})
-    block = f"""
-## {card["name"]}
-- problem_types: {", ".join(card.get("problem_types", []))}
-- constraint_types: {", ".join(card.get("constraint_types", []))}
-- description: {card.get("description", "")}
-- tradeoffs: {tradeoffs}
-- implementation_language: {impl.get("language", "")}
-- implementation_dependencies: {", ".join(impl.get("dependencies", []))}
-- implementation_pattern: |
-    {impl.get("pattern", "").replace(chr(10), chr(10) + "    ")}
-- implementation_complexity: {impl.get("complexity", "")}
-- sources: {sources}
-- fingerprint_imports: {", ".join(fp.get("imports", []))}
-- fingerprint_artifacts: {", ".join(fp.get("file_artifacts", []))}
-- fingerprint_patterns: {", ".join(fp.get("patterns", []))}
-- anti_patterns: {", ".join(card.get("anti_patterns", []))}
-- syntax_notes: {", ".join(card.get("syntax_notes", []))}
-- confidence: {card.get("confidence", "")}
-"""
-    with open(TECHNIQUES_PATH, "a", encoding="utf-8") as f:
-        f.write(block)
-    _log.ok(f"saved: {card['name']}")
-
-
-def annotate(data):
-    if not TECHNIQUES_PATH.exists():
-        return
-    text = TECHNIQUES_PATH.read_text(encoding="utf-8")
-    name = data.get("technique_name", "")
-    new_notes = data.get("syntax_notes", [])
-    if not name or not new_notes:
-        return
-
-    pattern = rf"(## {re.escape(name)}\n)(.*?)(?=\n## |\Z)"
-    match = re.search(pattern, text, re.DOTALL)
-    if not match:
-        _log.fail(f"technique '{name}' not found for annotation")
-        return
-
-    section = match.group(0)
-    notes_match = re.search(r"^- syntax_notes: (.+)$", section, re.MULTILINE)
-    if notes_match:
-        existing = [n.strip() for n in notes_match.group(1).split(",")]
-        merged = list(dict.fromkeys(existing + new_notes))
-        updated = section.replace(notes_match.group(0), f"- syntax_notes: {', '.join(merged)}")
-    else:
-        anti_match = re.search(r"^(- anti_patterns: .+)$", section, re.MULTILINE)
-        if anti_match:
-            updated = section.replace(
-                anti_match.group(0),
-                f"{anti_match.group(0)}\n- syntax_notes: {', '.join(new_notes)}",
-            )
+    lines = [f"## {card['name']}\n"]
+    for key in ("problem_types", "constraint_types", "description", "tradeoffs",
+                "implementation_language", "implementation_dependencies",
+                "implementation_pattern", "implementation_complexity",
+                "sources", "fingerprint_imports", "fingerprint_artifacts",
+                "fingerprint_patterns", "anti_patterns", "syntax_notes",
+                "confidence"):
+        val = card.get(key)
+        if not val:
+            continue
+        if key == "tradeoffs":
+            lines.append(f"- {key}: {tradeoffs}\n")
+        elif key == "implementation_pattern":
+            val_str = str(val).strip()
+            if "\n" in val_str:
+                lines.append(f"- {key}: |\n")
+                for line in val_str.split("\n"):
+                    lines.append(f"  {line}\n")
+            else:
+                lines.append(f"- {key}: {val_str}\n")
+        elif isinstance(val, list):
+            lines.append(f"- {key}: {', '.join(str(v) for v in val)}\n")
         else:
-            updated = section + f"\n- syntax_notes: {', '.join(new_notes)}"
+            lines.append(f"- {key}: {val}\n")
+    content = "".join(lines)
+    try:
+        existing = TECHNIQUES_PATH.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        existing = ""
+    if card['name'] in existing:
+        pattern = rf"## {re.escape(card['name'])}.*?(?=\n## |\Z)"
+        existing = re.sub(pattern, content.rstrip(), existing, flags=re.DOTALL)
+    else:
+        existing += "\n" + content
+    TECHNIQUES_PATH.write_text(existing, encoding="utf-8")
 
-    text = text[:match.start()] + updated + text[match.end():]
-    TECHNIQUES_PATH.write_text(text, encoding="utf-8")
-    _log.ok(f"annotated '{name}' with {len(new_notes)} notes")
+
+def annotate(card_name, notes):
+    techniques = load()
+    for t in techniques:
+        if t.get("name") == card_name:
+            existing = set(t.get("syntax_notes", []))
+            for note in notes:
+                if note not in existing:
+                    existing.add(note)
+            t["syntax_notes"] = sorted(list(existing))
+            save(t)
+            _log.detail(f"annotated '{card_name}' with {len(notes)} notes")
+            _log.detail(f"saved {len(existing)} syntax notes")
+            return
+    _log.fail(f"technique '{card_name}' not found")
 
 
 def main():
@@ -175,7 +184,7 @@ def main():
         print(json.dumps({"status": "saved"}))
         return
     if action == "annotate":
-        annotate(data)
+        annotate(data.get("technique_name", ""), data.get("syntax_notes", []))
         print(json.dumps({"status": "annotated"}))
 
 

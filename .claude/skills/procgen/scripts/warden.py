@@ -39,6 +39,7 @@ Rules:
 - Check whether the original errors are truly fixed or just worked around (e.g. wrapping in try/except, catching and ignoring, or removing the code that caused the error). Workarounds count as hallucinated_fixes.
 - Set approved to true ONLY if real substantive fixes were made, API usage is correct, and errors are genuinely addressed.
 - Set approved to false if changes are cosmetic, errors are worked around, or api_issues are found.
+- Keep notes under 50 words.
 
 Return ONLY a JSON object, no other text."""
 
