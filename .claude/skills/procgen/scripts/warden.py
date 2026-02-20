@@ -20,7 +20,7 @@ def main():
         notes_block = f"\nNotes from prior warden rejections:\n{prior}\n"
 
     prompt = f"""Compare original broken code with the refined version.
-Determine if the refinement actually fixes the errors or is just cosmetic.
+Determine if the refinement actually fixes the errors, is cosmetic, or introduces API problems.
 
 Original (broken) code:
 {data["original_code"]}
@@ -34,8 +34,11 @@ Errors the refinement should fix:
 Rules:
 - If the same error-causing patterns remain unchanged, list them in repeated_errors.
 - If the fix is cosmetic only (renamed variable, added comment, reordered unchanged lines), list in hallucinated_fixes.
-- Set approved to true ONLY if real substantive fixes were made addressing the errors.
-- Set approved to false if changes are cosmetic or errors are not addressed.
+- Check library API usage: wrong keyword args, incorrect function signatures, misused return values, deprecated calls. List each in api_issues.
+- Check for obvious syntax errors targeting the library (e.g. calling nonexistent methods, wrong arg types, missing required params). Include those in api_issues too.
+- Check whether the original errors are truly fixed or just worked around (e.g. wrapping in try/except, catching and ignoring, or removing the code that caused the error). Workarounds count as hallucinated_fixes.
+- Set approved to true ONLY if real substantive fixes were made, API usage is correct, and errors are genuinely addressed.
+- Set approved to false if changes are cosmetic, errors are worked around, or api_issues are found.
 
 Return ONLY a JSON object, no other text."""
 
@@ -47,6 +50,11 @@ Return ONLY a JSON object, no other text."""
     d = verdict.model_dump()
     if d.get("approved"):
         _log.ok("approved")
+        print(json.dumps(d, indent=2))
+        return
+    issues = d.get("api_issues", [])
+    if issues:
+        _log.fail(f"rejected (api issues: {', '.join(issues[:3])})")
     else:
         _log.fail(f"rejected: {d.get('notes', '')}")
     print(json.dumps(d, indent=2))

@@ -83,8 +83,8 @@ def warden(original, refined, errors, prior_notes):
     })
     result = run("warden.py", stdin_data=payload, fatal=False)
     if result is None:
-        _log.fail("warden crashed, fail-open (treating as approved)")
-        return {"approved": True, "notes": ""}
+        _log.fail("warden crashed, fail-closed")
+        return {"approved": False, "notes": "warden unavailable"}
     return result
 
 
@@ -193,15 +193,17 @@ def emit(request, problem, technique):
     (STATE_DIR / "active.json").write_text(json.dumps(active, indent=2), encoding="utf-8")
 
     MAX_RETRIES = 3
+    MAX_LLM_FAILURES = 3
     errors = []
     code = None
     prev_code = None
     imports = []
-    retry_count = 0
+    attempt = 0
+    llm_failures = 0
     warden_rejections = 0
     warden_notes = ""
 
-    for attempt in range(MAX_RETRIES):
+    while attempt < MAX_RETRIES and llm_failures < MAX_LLM_FAILURES:
         if attempt == 0 or code is None:
             _log.stage("SYNTHESIZE" if attempt == 0 else f"SYNTHESIZE (retry [{attempt+1}/{MAX_RETRIES}])")
             synth = run("synthesize.py", stdin_data=json.dumps({
@@ -223,6 +225,8 @@ def emit(request, problem, technique):
             synth = run("synthesize.py", stdin_data=json.dumps(payload), fatal=False)
 
         if synth is None:
+            llm_failures += 1
+            _log.fail(f"LLM failure {llm_failures}/{MAX_LLM_FAILURES}")
             _log.elapsed()
             errors.append({
                 "attempt": attempt + 1,
@@ -245,9 +249,13 @@ def emit(request, problem, technique):
             verdict = warden(prev_code, code, errors, warden_notes)
             if not verdict.get("approved", False):
                 warden_rejections += 1
+                issues = verdict.get("api_issues", [])
                 warden_notes = verdict.get("notes", "")
+                if issues:
+                    warden_notes += "\nAPI issues: " + "; ".join(issues)
                 _log.fail(f"REJECTED: {warden_notes}")
                 _log.elapsed()
+                attempt += 1
                 continue
             _log.ok("approved")
             _log.elapsed()
@@ -276,11 +284,10 @@ def emit(request, problem, technique):
                     "traceback": "",
                 })
                 prev_code = code
+                attempt += 1
                 continue
             _log.ok("output looks genuine")
             _log.elapsed()
-
-            retry_count = attempt
             break
 
         _log.fail(f"{stdout_or_etype}: {emsg}")
@@ -295,7 +302,7 @@ def emit(request, problem, technique):
             "traceback": tb or "",
         })
         prev_code = code
-        retry_count = attempt + 1
+        attempt += 1
 
     if errors:
         _log.stage("MEMORY ANNOTATE")
@@ -319,7 +326,7 @@ def emit(request, problem, technique):
         "fingerprint": fp,
         "anti_patterns": technique.get("anti_patterns", []),
         "sources": technique.get("sources", []),
-        "retry_count": retry_count,
+        "retry_count": attempt,
         "warden_rejections": warden_rejections,
     }
     print(json.dumps(output, indent=2))

@@ -387,11 +387,11 @@ const concepts = [
     body:`<p>The <code>/procgen</code> skill invokes <code>pipeline.py</code>, which orchestrates the full flow:</p>
 <pre> 1. Decompose      → parse request into typed ProcgenProblem
  2. Memory Lookup   → check techniques.md for cached cards
- 3. Search          → corpus (local) + web (Jina API)
+ 3. Search          → corpus (local) + web (Jina or DuckDuckGo)
  4. Verify Sources  → classify by trust and freshness
  5. Extract         → build TechniqueCard structs
  6. Write Memory    → append to techniques.md
- 7. Select          → score by constraint overlap
+ 7. Select          → score by embedding similarity
  8. Synthesize      → SMALL_MODEL generates the complete code
  9. Runtime Check   → execute in sandbox (timeout 30s)
 10. Lazy Check      → detect degenerate "empty box" output
@@ -490,7 +490,7 @@ anti_patterns:                         # what generate-and-test looks like
 <p><strong>Tier 1: Local corpus</strong> <span class="tag tag-green">pre-trusted</span></p>
 <p>Files in <code>corpus/indexed/</code> — textbook chapters, papers. Embedded with sentence-transformers (<code>multi-qa-MiniLM-L6-dot-v1</code>) and searched by vector similarity. No source verification needed. Currently: ASP chapter from the PCG in Games textbook.</p>
 <p><strong>Tier 2: Web search</strong> <span class="tag tag-h">verified</span></p>
-<p>Jina API (<code>s.jina.ai</code> search, <code>r.jina.ai</code> reader). Every result goes through <code>VerifySource()</code> which classifies it:</p>
+<p>Web search tries Jina API first (<code>s.jina.ai</code> search, <code>r.jina.ai</code> reader). If Jina is unavailable (missing key, errors), falls back to DuckDuckGo with HTML stripping. Every result goes through <code>VerifySource()</code> which classifies it:</p>
 <pre>ACADEMIC       → arxiv, ACM, IEEE (high trust)
 OFFICIAL_DOCS  → library docs (high trust)
 TUTORIAL       → structured, known platform (medium trust)
@@ -509,7 +509,7 @@ GENERATED      → AI-generated (skipped)</pre>
     chips:["techs","extract","memory"],
     tldr:"The system grows automatically by caching technique cards. You can also add corpus files or extend Pydantic types.",
     body:`<p>Three paths, ordered by effort:</p>
-<p><strong>1. Automatic (zero effort)</strong> — every time the pipeline runs and memory misses, it searches the web, verifies sources, extracts technique cards, and <strong>appends them to <code>techniques.md</code></strong>. Next session, that technique is a cache hit. But cache scores degrade over time — techniques that accumulate <code>syntax_notes</code> from repeated failures get penalized (10% per note, capped at 80%). A technique with enough failures drops below the 0.5 hit threshold, triggering a fresh web search instead of reusing broken knowledge.</p>
+<p><strong>1. Automatic (zero effort)</strong> — every time the pipeline runs and memory misses, it searches the web, verifies sources, extracts technique cards, and <strong>appends them to <code>techniques.md</code></strong>. Next session, that technique is a cache hit. Cache scores use <strong>embedding similarity</strong> (all-MiniLM-L6-v2) — the problem description is compared against each technique's description via cosine similarity. Techniques that accumulate <code>syntax_notes</code> from repeated failures get penalized (10% per note, capped at 80%). A technique with enough failures drops below the 0.5 hit threshold, triggering a fresh web search instead of reusing broken knowledge.</p>
 <p><strong>2. Add corpus</strong> — drop a <code>.txt</code> file in <code>corpus/</code>. The indexer (<code>index_corpus.py</code>) computes embeddings and moves it to <code>corpus/indexed/</code>. It becomes searchable immediately as a pre-trusted source.</p>
 <p><strong>3. Add technique types</strong> — extend the enums in <code>_types.py</code>:</p>
 <pre># Add a new constraint type
@@ -583,16 +583,16 @@ clingo.Control().solve()      # zero retry loops</pre>
   },
   { id:"runtime", num:"10", title:"What happens when generated code doesn't run?",
     chips:["synth","runner","warden","lazy"],
-    tldr:"A run-error-refine loop catches broken code and degenerate output. Errors feed back into the next attempt, and learned syntax_notes persist on the technique card.",
+    tldr:"A run-error-refine loop catches broken code and degenerate output. Separate retry budgets for code failures vs LLM parse failures. Errors feed back into the next attempt, and learned syntax_notes persist on the technique card.",
     body:`<p>The small model identifies the right technique and decomposes constraints correctly, but sometimes generates <strong>broken code</strong> — especially for niche tools like <code>clingo</code> (ASP solver) where syntax is unusual. Even when code runs, it can produce <strong>degenerate output</strong> (an empty box with tokens at edges).</p>
-<p>The <strong>retry loop</strong> catches both:</p>
-<pre>1. Synthesize code
-2. Warden gate — reject cosmetic-only refinements
+<p>The <strong>retry loop</strong> uses <strong>separate budgets</strong>: <code>attempt</code> (max 3) for code execution failures, <code>llm_failures</code> (max 3) for LLM parse failures (when synthesize returns None). LLM failures don't burn code-fix retries.</p>
+<pre>1. Synthesize code (LLM parse failure → separate counter)
+2. Warden gate — reject cosmetic, API, or repeated-error refinements
 3. Execute in sandbox (timeout=30s)
 4. If error → parse traceback, go to step 6
 5. Lazy check → detect degenerate output
 6. Call RefineCode with errors + syntax_notes
-7. Repeat up to 3 times</pre>
+7. Repeat (up to 3 code failures + 3 LLM failures)</pre>
 <p>The <strong>lazy check</strong> (<code>CheckLazy</code>) catches a failure mode where the code <em>runs successfully</em> but satisfies constraints in the most trivial way possible — like making the entire dungeon one big open room with no walls. It flags these as <code>DegenerateOutput</code> errors that feed back into refinement.</p>
 <p>Each error is captured as a typed <code>RefinementError</code>:</p>
 <pre>class RefinementError {
@@ -602,7 +602,7 @@ clingo.Control().solve()      # zero retry loops</pre>
   error_line string    // offending line
   traceback string     // full traceback
 }</pre>
-<p>After the loop completes (success or max retries), any lessons learned get persisted as <strong>syntax_notes</strong> on the technique card in <code>techniques.md</code>. These notes serve double duty: the first synthesis attempt already knows the pitfalls, <em>and</em> each note penalizes the technique's cache score by 10% (capped at 80%). A technique that keeps failing will eventually fall below the 0.5 cache-hit threshold, forcing a fresh web search for alternatives.</p>
+<p>After the loop completes (success or max retries), any lessons learned get persisted as <strong>syntax_notes</strong> on the technique card in <code>techniques.md</code>. These notes serve double duty: the first synthesis attempt already knows the pitfalls, <em>and</em> each note penalizes the technique's embedding similarity score by 10% (capped at 80%). A technique that keeps failing will eventually fall below the 0.5 cache-hit threshold, forcing a fresh web search for alternatives.</p>
 <p class="file">pipeline.py → execute() + emit() retry loop</p>`,
     quiz:{ q:"What happens to errors encountered during the retry loop?",
       opts:["They're logged and discarded",
@@ -613,7 +613,7 @@ clingo.Control().solve()      # zero retry loops</pre>
   },
   { id:"warden", num:"11", title:"Who watches the watcher?",
     chips:["warden","synth","runner"],
-    tldr:"A second SMALL_MODEL agent (the Warden) gates each refinement — checking if the synthesizer actually fixed the errors or just made cosmetic changes.",
+    tldr:"A second SMALL_MODEL agent (the Warden) gates each refinement — checking for cosmetic changes, API misuse, and repeated errors. Fail-closed: if the Warden crashes, the refinement is rejected.",
     body:`<p>Without the Warden, the synthesizer can <strong>lie about fixes</strong>. It might rename a variable, add a comment, or reorder unchanged lines — and claim the error is fixed. The Warden catches this.</p>
 <p>After each refinement attempt, <strong>before executing</strong>, the Warden reviews:</p>
 <pre>WatchRefinement(
@@ -622,15 +622,17 @@ clingo.Control().solve()      # zero retry loops</pre>
   errors,          // what went wrong
   warden_notes     // prior rejection reasons
 ) → WardenVerdict</pre>
-<p>The verdict has three checks:</p>
+<p>The verdict has four checks:</p>
 <pre>class WardenVerdict {
   approved bool               // pass the gate?
   repeated_errors string[]    // same patterns still present
   hallucinated_fixes string[] // cosmetic-only changes
+  api_issues string[]         // wrong kwargs, bad signatures, workarounds
   notes string                // feedback for next attempt
 }</pre>
 <p>If <strong>rejected</strong>, the loop skips execution entirely (no point running code the Warden flagged) and feeds the Warden's notes into the next <code>RefineCode</code> call. This prevents wasting retries on non-fixes.</p>
-<p>The Warden is another <span class="tag tag-h">SMALL_MODEL</span> call — cheap, fast, and focused on a single job: <strong>did the code actually change where it needed to?</strong></p>
+<p>The Warden is <strong>fail-closed</strong>: if it crashes or returns unparseable output, the refinement is <strong>rejected</strong> (not approved). This is safer than fail-open — a broken Warden blocks bad code rather than letting it through.</p>
+<p>The Warden is another <span class="tag tag-h">SMALL_MODEL</span> call — cheap, fast, and focused on a single job: <strong>did the code actually change where it needed to, using the right API?</strong></p>
 <p class="file">warden.py → .claude/skills/procgen/scripts/warden.py</p>`,
     quiz:{ q:"What does the Warden do when it detects a cosmetic-only fix?",
       opts:["Approves it anyway since the code changed",

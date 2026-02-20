@@ -122,6 +122,7 @@ class WardenVerdict(BaseModel):
     approved: bool = False
     repeated_errors: list[str] = []
     hallucinated_fixes: list[str] = []
+    api_issues: list[str] = []
     notes: str = ""
 
 

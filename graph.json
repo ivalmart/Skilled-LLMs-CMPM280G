@@ -60,7 +60,7 @@
       "id": "memory_lookup",
       "label": "Memory Lookup",
       "type": "stage",
-      "description": "Stage 2: Searches techniques.md for cached technique cards. Scores by overlap of problem_types and constraint_types. Hit (score >= 0.5) skips to selection.",
+      "description": "Stage 2: Searches techniques.md for cached technique cards. Scores by embedding similarity (all-MiniLM-L6-v2 cosine) with syntax_notes penalty. Hit (score >= 0.5) skips to search.",
       "file": ".claude/skills/procgen/scripts/memory.py",
       "layer": 3, "col": 1
     },
@@ -76,7 +76,7 @@
       "id": "web_search",
       "label": "Web Search",
       "type": "stage",
-      "description": "Stage 3b (on miss): Searches Jina API, fetches top 5 results via r.jina.ai reader. Results go through source verification.",
+      "description": "Stage 3b (on miss): Tries Jina API first, falls back to DuckDuckGo if Jina unavailable. Results go through source verification.",
       "file": ".claude/skills/procgen/scripts/search.py",
       "layer": 4, "col": 1
     },
@@ -107,7 +107,7 @@
       "id": "technique_select",
       "label": "Select Technique",
       "type": "stage",
-      "description": "Stage 6: Scores all known techniques by constraint overlap with the decomposed problem. Best match is selected.",
+      "description": "Stage 6: Scores all extracted techniques by constraint type overlap with the decomposed problem. Best match is selected.",
       "layer": 7, "col": 1
     },
     {
@@ -230,7 +230,7 @@
       "id": "jina",
       "label": "Jina API",
       "type": "external",
-      "description": "s.jina.ai for web search, r.jina.ai for URL-to-markdown reader. Requires JINA_API_KEY.",
+      "description": "s.jina.ai for web search, r.jina.ai for URL-to-markdown reader. Optional — falls back to DuckDuckGo if JINA_API_KEY is absent.",
       "layer": 4, "col": 4
     },
     {
@@ -244,7 +244,7 @@
       "id": "sentence_tf",
       "label": "MiniLM",
       "type": "external",
-      "description": "sentence-transformers model (multi-qa-MiniLM-L6-dot-v1). Embeds corpus documents and queries for vector similarity search.",
+      "description": "sentence-transformers model. Used for corpus search (multi-qa-MiniLM-L6-dot-v1) and technique memory lookup (all-MiniLM-L6-v2).",
       "layer": 4, "col": 5
     },
     {

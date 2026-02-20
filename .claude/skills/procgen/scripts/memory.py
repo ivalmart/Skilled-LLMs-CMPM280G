@@ -42,30 +42,52 @@ def load():
     return techniques
 
 
+def problem_text(problem):
+    parts = [problem.get("output_structure", "")]
+    for c in problem.get("constraints", []):
+        if isinstance(c, dict):
+            parts.append(c.get("type", ""))
+            parts.append(c.get("description", ""))
+        else:
+            parts.append(str(c))
+    parts.append(problem.get("scale", ""))
+    return " ".join(p for p in parts if p)
+
+
+def technique_text(t):
+    parts = [t.get("name", "")]
+    parts.extend(t.get("problem_types", []))
+    parts.extend(t.get("constraint_types", []))
+    parts.append(t.get("description", ""))
+    return " ".join(p for p in parts if p)
+
+
 def lookup(problem):
     techniques = load()
     if not techniques:
         _log.detail("technique memory is empty")
         return []
     _log.detail(f"{len(techniques)} techniques in memory")
-    target_types = {problem.get("output_structure", "")}
-    target_constraints = set()
-    for c in problem.get("constraints", []):
-        if isinstance(c, dict):
-            target_constraints.add(c.get("type", ""))
-        else:
-            target_constraints.add(str(c))
+
+    from sentence_transformers import SentenceTransformer
+    import numpy as np
+
+    model = SentenceTransformer("all-MiniLM-L6-v2")
+    query = problem_text(problem)
+    _log.detail(f"query: {query[:80]}")
+    q_emb = model.encode(query)
+
+    texts = [technique_text(t) for t in techniques]
+    t_embs = model.encode(texts)
+
     scored = []
-    for t in techniques:
-        ptypes = set(t.get("problem_types", []))
-        ctypes = set(t.get("constraint_types", []))
-        overlap = len(ptypes & target_types) + len(ctypes & target_constraints)
-        total = max(len(target_types) + len(target_constraints), 1)
-        raw = overlap / total
+    for i, t in enumerate(techniques):
+        raw = float(np.dot(q_emb, t_embs[i]) / (np.linalg.norm(q_emb) * np.linalg.norm(t_embs[i]) + 1e-8))
+        raw = max(raw, 0.0)
         notes = t.get("syntax_notes", [])
         penalty = min(len(notes) * 0.1, 0.8)
         score = raw * (1.0 - penalty)
-        _log.detail(f"  {t.get('name', '?')}: raw={raw:.2f} notes={len(notes)} penalty={penalty:.2f} score={score:.2f}")
+        _log.detail(f"  {t.get('name', '?')}: sim={raw:.3f} notes={len(notes)} score={score:.3f}")
         scored.append((score, t))
     scored.sort(key=lambda x: x[0], reverse=True)
     return [{"score": s, "technique": t} for s, t in scored[:5]]
