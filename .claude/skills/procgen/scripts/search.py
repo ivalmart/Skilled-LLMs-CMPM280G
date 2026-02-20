@@ -6,6 +6,8 @@ import urllib.parse
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 
+import _log
+
 API_KEY = os.environ["JINA_API_KEY"]
 HEADERS = {
     "Accept": "application/json",
@@ -22,19 +24,21 @@ def fetch(endpoint, path):
 
 
 def search(query, count=5):
+    _log.detail(f"jina search: {query}")
     data = fetch("https://s.jina.ai", query)
     items = data.get("data", [])[:count]
     results = []
-    for item in items:
+    for i, item in enumerate(items):
         url = item.get("url", "")
         title = item.get("title", "")
         snippet = item.get("description", "")
+        _log.detail(f"  [{i+1}] reading: {title[:50]}")
         content = ""
         try:
             page = fetch("https://r.jina.ai", url)
             content = (page.get("data", {}).get("content", "") or "")[:MAX_CONTENT]
         except Exception:
-            pass
+            _log.fail(f"  [{i+1}] failed to fetch content")
         results.append({
             "url": url,
             "title": title,

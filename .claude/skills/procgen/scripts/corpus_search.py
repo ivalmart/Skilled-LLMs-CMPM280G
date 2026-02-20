@@ -2,6 +2,8 @@ import sys
 import json
 from pathlib import Path
 
+import _log
+
 SEARCH_SCRIPTS = Path(__file__).resolve().parents[2] / "procgen-search" / "scripts"
 sys.path.insert(0, str(SEARCH_SCRIPTS))
 
@@ -16,8 +18,10 @@ def search(query, top_k=3):
     for hit in hits:
         p = Path(hit["path"])
         if not p.exists():
+            _log.detail(f"  skip (missing): {hit['filename']}")
             continue
         content = p.read_text(encoding="utf-8", errors="ignore")[:MAX_CONTENT]
+        _log.detail(f"  hit: {hit['filename']} (score={hit.get('score', '?')})")
         results.append({
             "url": str(p),
             "title": hit["filename"],

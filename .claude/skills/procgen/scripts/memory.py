@@ -4,6 +4,8 @@ import re
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 
+import _log
+
 TECHNIQUES_PATH = Path(__file__).resolve().parents[2] / "knowledge" / "techniques.md"
 
 
@@ -26,7 +28,8 @@ def load():
             key, val = m.group(1), m.group(2)
             if key in ("problem_types", "constraint_types", "fingerprint_imports",
                         "fingerprint_artifacts", "fingerprint_patterns",
-                        "anti_patterns", "implementation_dependencies"):
+                        "anti_patterns", "implementation_dependencies",
+                        "syntax_notes"):
                 fields[key] = [v.strip() for v in val.split(",")]
             elif key == "tradeoffs":
                 fields[key] = []
@@ -43,7 +46,9 @@ def load():
 def lookup(problem):
     techniques = load()
     if not techniques:
+        _log.detail("technique memory is empty")
         return []
+    _log.detail(f"{len(techniques)} techniques in memory")
     target_types = {problem.get("output_structure", "")}
     target_constraints = set()
     for c in problem.get("constraints", []):
@@ -89,10 +94,48 @@ def save(card):
 - fingerprint_artifacts: {", ".join(fp.get("file_artifacts", []))}
 - fingerprint_patterns: {", ".join(fp.get("patterns", []))}
 - anti_patterns: {", ".join(card.get("anti_patterns", []))}
+- syntax_notes: {", ".join(card.get("syntax_notes", []))}
 - confidence: {card.get("confidence", "")}
 """
     with open(TECHNIQUES_PATH, "a", encoding="utf-8") as f:
         f.write(block)
+    _log.ok(f"saved: {card['name']}")
+
+
+def annotate(data):
+    if not TECHNIQUES_PATH.exists():
+        return
+    text = TECHNIQUES_PATH.read_text(encoding="utf-8")
+    name = data.get("technique_name", "")
+    new_notes = data.get("syntax_notes", [])
+    if not name or not new_notes:
+        return
+
+    pattern = rf"(## {re.escape(name)}\n)(.*?)(?=\n## |\Z)"
+    match = re.search(pattern, text, re.DOTALL)
+    if not match:
+        _log.fail(f"technique '{name}' not found for annotation")
+        return
+
+    section = match.group(0)
+    notes_match = re.search(r"^- syntax_notes: (.+)$", section, re.MULTILINE)
+    if notes_match:
+        existing = [n.strip() for n in notes_match.group(1).split(",")]
+        merged = list(dict.fromkeys(existing + new_notes))
+        updated = section.replace(notes_match.group(0), f"- syntax_notes: {', '.join(merged)}")
+    else:
+        anti_match = re.search(r"^(- anti_patterns: .+)$", section, re.MULTILINE)
+        if anti_match:
+            updated = section.replace(
+                anti_match.group(0),
+                f"{anti_match.group(0)}\n- syntax_notes: {', '.join(new_notes)}",
+            )
+        else:
+            updated = section + f"\n- syntax_notes: {', '.join(new_notes)}"
+
+    text = text[:match.start()] + updated + text[match.end():]
+    TECHNIQUES_PATH.write_text(text, encoding="utf-8")
+    _log.ok(f"annotated '{name}' with {len(new_notes)} notes")
 
 
 def main():
@@ -104,6 +147,10 @@ def main():
     if action == "save":
         save(data)
         print(json.dumps({"status": "saved"}))
+        return
+    if action == "annotate":
+        annotate(data)
+        print(json.dumps({"status": "annotated"}))
 
 
 if __name__ == "__main__":

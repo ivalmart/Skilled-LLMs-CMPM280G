@@ -1,5 +1,5 @@
 function DecomposeProblem(request: string) -> ProcgenProblem {
-  client Haiku
+  client SMALL_MODEL
   prompt #"
     Analyze this procedural generation request and decompose it into a structured problem.
 
@@ -16,7 +16,7 @@ function DecomposeProblem(request: string) -> ProcgenProblem {
 }
 
 function VerifySource(url: string, title: string, snippet: string) -> Source {
-  client Haiku
+  client SMALL_MODEL
   prompt #"
     Evaluate this web source for reliability as a procedural generation reference.
 
@@ -32,7 +32,7 @@ function VerifySource(url: string, title: string, snippet: string) -> Source {
 }
 
 function ExtractTechnique(content: string, url: string, problem: ProcgenProblem) -> TechniqueCard {
-  client Haiku
+  client SMALL_MODEL
   prompt #"
     Extract a procedural generation technique from this source content.
 
@@ -57,8 +57,8 @@ function ExtractTechnique(content: string, url: string, problem: ProcgenProblem)
   "#
 }
 
-function SynthesizeCode(request: string, technique: TechniqueCard) -> SynthesizedCode {
-  client Haiku
+function SynthesizeCode(request: string, technique: TechniqueCard, syntax_notes: string[]) -> SynthesizedCode {
+  client SMALL_MODEL
   prompt #"
     Write a complete, runnable Python file that implements the following procedural generation request
     using the specified technique. Do NOT fall back to generate-and-test (random retry loops).
@@ -78,6 +78,13 @@ function SynthesizeCode(request: string, technique: TechniqueCard) -> Synthesize
     - {{ ct }}
     {% endfor %}
 
+    {% if syntax_notes %}
+    Known syntax pitfalls for this technique (learned from prior runs):
+    {% for note in syntax_notes %}
+    - {{ note }}
+    {% endfor %}
+    {% endif %}
+
     RULES:
     - Output a single complete Python file that runs standalone
     - Use the technique's implementation pattern, not random-retry
@@ -88,8 +95,104 @@ function SynthesizeCode(request: string, technique: TechniqueCard) -> Synthesize
   "#
 }
 
+function RefineCode(request: string, technique: TechniqueCard, broken_code: string, errors: RefinementError[], syntax_notes: string[]) -> SynthesizedCode {
+  client SMALL_MODEL
+  prompt #"
+    Fix this broken procedural generation code. The previous attempt failed at runtime.
+
+    Request: {{ request }}
+    Technique: {{ technique.name }}
+    Implementation pattern: {{ technique.implementation.pattern }}
+
+    Broken code:
+    {{ broken_code }}
+
+    Errors encountered:
+    {% for e in errors %}
+    Attempt {{ e.attempt }}: {{ e.error_type }} — {{ e.error_message }}
+    Line: {{ e.error_line }}
+    Traceback: {{ e.traceback }}
+    {% endfor %}
+
+    {% if syntax_notes %}
+    Known syntax issues for this technique (from prior runs):
+    {% for note in syntax_notes %}
+    - {{ note }}
+    {% endfor %}
+    {% endif %}
+
+    RULES:
+    - Fix the actual errors, don't just rename variables or add comments
+    - Keep using the technique's implementation pattern
+    - Output a complete runnable Python file
+    - Keep it under 150 lines
+
+    {{ ctx.output_format }}
+  "#
+}
+
+function WatchRefinement(original_code: string, refined_code: string, errors: RefinementError[], warden_notes: string) -> WardenVerdict {
+  client SMALL_MODEL
+  prompt #"
+    You are a code review warden. Compare the original broken code with the refined version.
+    Your job: verify the refinement actually fixes the errors, not just cosmetic changes.
+
+    Original (broken) code:
+    {{ original_code }}
+
+    Refined code:
+    {{ refined_code }}
+
+    Errors the refinement should fix:
+    {% for e in errors %}
+    - {{ e.error_type }}: {{ e.error_message }} (line: {{ e.error_line }})
+    {% endfor %}
+
+    {% if warden_notes %}
+    Notes from prior warden rejections:
+    {{ warden_notes }}
+    {% endif %}
+
+    CHECK:
+    1. Did the refined code actually change the lines that caused the errors?
+       If the same error-causing patterns remain, list them in repeated_errors.
+    2. Is the fix cosmetic only (renamed variable, added comment, reordered unchanged lines)?
+       If structurally identical despite surface changes, list in hallucinated_fixes.
+    3. Set approved=true ONLY if real, substantive fixes were made to address the errors.
+
+    {{ ctx.output_format }}
+  "#
+}
+
+function CheckLazy(request: string, technique_name: string, stdout: string) -> LazyVerdict {
+  client SMALL_MODEL
+  prompt #"
+    You are checking if a procedural generator's output is degenerate.
+    Degenerate means the code technically runs but produces minimal, trivial,
+    or exploitative output that satisfies constraints by cheating.
+
+    Request: {{ request }}
+    Technique: {{ technique_name }}
+
+    Program output:
+    {{ stdout }}
+
+    Examples of degenerate output:
+    - A dungeon that is just a thin corridor hugging walls
+    - A maze with no branching (single path)
+    - A terrain that is completely flat except one spike
+    - A level where all items cluster in one corner
+    - A solver that hits the exact minimum constraint and stops
+
+    Set degenerate=true if the output looks like it's gaming the constraints
+    rather than producing genuinely interesting content. Explain why in reason.
+
+    {{ ctx.output_format }}
+  "#
+}
+
 function VerifyTechnique(code: string, technique_name: string, fingerprint_imports: string[], fingerprint_patterns: string[], anti_patterns: string[]) -> TechniqueVerification {
-  client Haiku
+  client SMALL_MODEL
   prompt #"
     Verify that this code actually uses the recommended procedural generation technique.
 

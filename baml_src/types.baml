@@ -90,6 +90,7 @@ class TechniqueCard {
   sources SourceRef[]
   fingerprint Fingerprint
   anti_patterns string[]
+  syntax_notes string[]
   confidence string
 }
 
@@ -103,4 +104,24 @@ class TechniqueVerification {
 class SynthesizedCode {
   code string @description("complete runnable Python file implementing the generator")
   imports string[] @description("third-party packages required (pip install names)")
+}
+
+class RefinementError {
+  attempt int
+  error_type string
+  error_message string
+  error_line string
+  traceback string
+}
+
+class WardenVerdict {
+  approved bool
+  repeated_errors string[]
+  hallucinated_fixes string[]
+  notes string
+}
+
+class LazyVerdict {
+  degenerate bool
+  reason string
 }
