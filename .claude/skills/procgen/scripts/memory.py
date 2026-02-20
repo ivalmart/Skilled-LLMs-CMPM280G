@@ -61,7 +61,12 @@ def lookup(problem):
         ctypes = set(t.get("constraint_types", []))
         overlap = len(ptypes & target_types) + len(ctypes & target_constraints)
         total = max(len(target_types) + len(target_constraints), 1)
-        scored.append((overlap / total, t))
+        raw = overlap / total
+        notes = t.get("syntax_notes", [])
+        penalty = min(len(notes) * 0.1, 0.8)
+        score = raw * (1.0 - penalty)
+        _log.detail(f"  {t.get('name', '?')}: raw={raw:.2f} notes={len(notes)} penalty={penalty:.2f} score={score:.2f}")
+        scored.append((score, t))
     scored.sort(key=lambda x: x[0], reverse=True)
     return [{"score": s, "technique": t} for s, t in scored[:5]]
 

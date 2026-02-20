@@ -10,6 +10,7 @@ See `design_fiction.md` for the full vision.
 - `.claude/skills/procgen/scripts/_types.py` — Pydantic models (replaces BAML types)
 - `.claude/skills/procgen/scripts/pipeline.py` — main pipeline orchestrator (retry loop + warden gate)
 - `.claude/skills/procgen/scripts/synthesize.py` — code synthesis + refinement
+- `.claude/skills/procgen/scripts/memory.py` — technique memory with syntax_notes penalty scoring
 - `.claude/skills/procgen/scripts/warden.py` — Warden agent (gates refinements)
 - `.claude/hooks/verify_procgen.py` — PostToolUse hook verifying code uses recommended technique
 - `.claude/knowledge/techniques.md` — growing technique memory (self-populating)

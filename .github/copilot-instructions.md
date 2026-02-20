@@ -10,6 +10,7 @@ See `design_fiction.md` for the full vision.
 - `.claude/skills/procgen/scripts/_types.py` — Pydantic models for all pipeline types
 - `.claude/skills/procgen/scripts/pipeline.py` — main pipeline orchestrator (retry loop + warden gate)
 - `.claude/skills/procgen/scripts/synthesize.py` — code synthesis + refinement
+- `.claude/skills/procgen/scripts/memory.py` — technique memory with syntax_notes penalty scoring
 - `.claude/skills/procgen/scripts/warden.py` — Warden agent (gates refinements)
 - `.claude/hooks/verify_procgen.py` — verification script (also usable as a pre-commit hook)
 - `.claude/knowledge/techniques.md` — growing technique memory (starts empty, self-populating)

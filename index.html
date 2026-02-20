@@ -509,7 +509,7 @@ GENERATED      → AI-generated (skipped)</pre>
     chips:["techs","extract","memory"],
     tldr:"The system grows automatically by caching technique cards. You can also add corpus files or extend Pydantic types.",
     body:`<p>Three paths, ordered by effort:</p>
-<p><strong>1. Automatic (zero effort)</strong> — every time the pipeline runs and memory misses, it searches the web, verifies sources, extracts technique cards, and <strong>appends them to <code>techniques.md</code></strong>. Next session, that technique is a cache hit.</p>
+<p><strong>1. Automatic (zero effort)</strong> — every time the pipeline runs and memory misses, it searches the web, verifies sources, extracts technique cards, and <strong>appends them to <code>techniques.md</code></strong>. Next session, that technique is a cache hit. But cache scores degrade over time — techniques that accumulate <code>syntax_notes</code> from repeated failures get penalized (10% per note, capped at 80%). A technique with enough failures drops below the 0.5 hit threshold, triggering a fresh web search instead of reusing broken knowledge.</p>
 <p><strong>2. Add corpus</strong> — drop a <code>.txt</code> file in <code>corpus/</code>. The indexer (<code>index_corpus.py</code>) computes embeddings and moves it to <code>corpus/indexed/</code>. It becomes searchable immediately as a pre-trusted source.</p>
 <p><strong>3. Add technique types</strong> — extend the enums in <code>_types.py</code>:</p>
 <pre># Add a new constraint type
@@ -602,14 +602,14 @@ clingo.Control().solve()      # zero retry loops</pre>
   error_line string    // offending line
   traceback string     // full traceback
 }</pre>
-<p>After the loop completes (success or max retries), any lessons learned get persisted as <strong>syntax_notes</strong> on the technique card in <code>techniques.md</code>. Next time this technique is used, the first synthesis attempt already knows the pitfalls.</p>
+<p>After the loop completes (success or max retries), any lessons learned get persisted as <strong>syntax_notes</strong> on the technique card in <code>techniques.md</code>. These notes serve double duty: the first synthesis attempt already knows the pitfalls, <em>and</em> each note penalizes the technique's cache score by 10% (capped at 80%). A technique that keeps failing will eventually fall below the 0.5 cache-hit threshold, forcing a fresh web search for alternatives.</p>
 <p class="file">pipeline.py → execute() + emit() retry loop</p>`,
     quiz:{ q:"What happens to errors encountered during the retry loop?",
       opts:["They're logged and discarded",
             "They feed back into RefineCode and persist as syntax_notes on the technique card",
             "They cause the pipeline to abort immediately",
             "They're sent to the user for manual fixing"],
-      ans:1, why:"Errors feed into RefineCode for the next attempt, and after the loop, learned pitfalls persist as syntax_notes on the technique card — so future first attempts benefit from past failures." }
+      ans:1, why:"Errors feed into RefineCode for the next attempt, and after the loop, learned pitfalls persist as syntax_notes on the technique card — so future first attempts benefit from past failures. Accumulated notes also penalize the technique's cache score, eventually forcing a fresh search." }
   },
   { id:"warden", num:"11", title:"Who watches the watcher?",
     chips:["warden","synth","runner"],

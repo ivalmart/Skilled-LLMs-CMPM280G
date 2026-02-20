@@ -19,8 +19,8 @@ def main():
     if prior:
         notes_block = f"\nNotes from prior warden rejections:\n{prior}\n"
 
-    prompt = f"""You are a code review warden. Compare the original broken code with the refined version.
-Your job: verify the refinement actually fixes the errors, not just cosmetic changes.
+    prompt = f"""Compare original broken code with the refined version.
+Determine if the refinement actually fixes the errors or is just cosmetic.
 
 Original (broken) code:
 {data["original_code"]}
@@ -31,12 +31,13 @@ Refined code:
 Errors the refinement should fix:
 {err_lines}
 {notes_block}
-CHECK:
-1. Did the refined code actually change the lines that caused the errors?
-   If the same error-causing patterns remain, list them in repeated_errors.
-2. Is the fix cosmetic only (renamed variable, added comment, reordered unchanged lines)?
-   If structurally identical despite surface changes, list in hallucinated_fixes.
-3. Set approved=true ONLY if real, substantive fixes were made to address the errors."""
+Rules:
+- If the same error-causing patterns remain unchanged, list them in repeated_errors.
+- If the fix is cosmetic only (renamed variable, added comment, reordered unchanged lines), list in hallucinated_fixes.
+- Set approved to true ONLY if real substantive fixes were made addressing the errors.
+- Set approved to false if changes are cosmetic or errors are not addressed.
+
+Return ONLY a JSON object, no other text."""
 
     try:
         verdict = call(prompt, WardenVerdict)
