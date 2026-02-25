@@ -1,6 +1,0 @@
-baml-py==0.219.0
-requests
-typing_extensions
-pydantic
-python-dotenv
-clingo
