@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Minesweeper</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #c0c0c0; font-family: 'Segoe UI', sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+#game { background: #c0c0c0; border: 3px outset #fff; padding: 8px; }
+#header { display: flex; justify-content: space-between; align-items: center; border: 2px inset #808080; padding: 4px 6px; margin-bottom: 8px; background: #c0c0c0; }
+.counter { background: #000; color: #f00; font-family: 'Consolas', monospace; font-size: 28px; font-weight: bold; padding: 2px 4px; min-width: 56px; text-align: right; border: 1px inset #808080; letter-spacing: 2px; }
+#face { width: 36px; height: 36px; font-size: 22px; border: 2px outset #fff; background: #c0c0c0; cursor: pointer; display: flex; align-items: center; justify-content: center; user-select: none; }
+#face:active { border-style: inset; }
+#board { display: grid; border: 3px inset #808080; }
+.cell { width: 28px; height: 28px; border: 2px outset #fff; background: #c0c0c0; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: bold; cursor: pointer; user-select: none; }
+.cell:active:not(.revealed):not(.flagged) { border-style: inset; }
+.cell.revealed { border: 1px solid #808080; cursor: default; }
+.cell.mine-hit { background: #f00; }
+.cell.flagged { cursor: pointer; }
+.n1 { color: #0000ff; } .n2 { color: #008000; } .n3 { color: #ff0000; }
+.n4 { color: #000080; } .n5 { color: #800000; } .n6 { color: #008080; }
+.n7 { color: #000; } .n8 { color: #808080; }
+#controls { margin-bottom: 8px; display: flex; gap: 6px; justify-content: center; }
+#controls button { padding: 4px 10px; border: 2px outset #fff; background: #c0c0c0; cursor: pointer; font-size: 13px; }
+#controls button:active { border-style: inset; }
+#controls button.active { border-style: inset; background: #a0a0a0; }
+</style>
+</head>
+<body>
+<div id="game">
+  <div id="controls">
+    <button onclick="init(9,9,10)" id="b1">Beginner</button>
+    <button onclick="init(16,16,40)" id="b2">Intermediate</button>
+    <button onclick="init(16,30,99)" id="b3">Expert</button>
+  </div>
+  <div id="header">
+    <div class="counter" id="mines">010</div>
+    <div id="face" onclick="init(rows,cols,total)">&#128578;</div>
+    <div class="counter" id="timer">000</div>
+  </div>
+  <div id="board"></div>
+</div>
+<script>
+let rows, cols, total, grid, revealed, flags, over, started, timerID, seconds, first
+
+function init(r, c, m) {
+  rows = r; cols = c; total = m
+  grid = []; revealed = []; flags = []
+  over = false; started = false; first = true; seconds = 0
+  clearInterval(timerID)
+  document.getElementById('timer').textContent = '000'
+  document.getElementById('face').innerHTML = '&#128578;'
+  document.getElementById('mines').textContent = String(m).padStart(3, '0')
+
+  for (let i = 0; i < r; i++) {
+    grid[i] = []; revealed[i] = []; flags[i] = []
+    for (let j = 0; j < c; j++) {
+      grid[i][j] = 0; revealed[i][j] = false; flags[i][j] = false
+    }
+  }
+
+  const board = document.getElementById('board')
+  board.style.gridTemplateColumns = `repeat(${c}, 28px)`
+  board.innerHTML = ''
+
+  for (let i = 0; i < r; i++) {
+    for (let j = 0; j < c; j++) {
+      const cell = document.createElement('div')
+      cell.className = 'cell'
+      cell.dataset.r = i; cell.dataset.c = j
+      cell.addEventListener('click', () => click(i, j))
+      cell.addEventListener('contextmenu', e => { e.preventDefault(); flag(i, j) })
+      cell.addEventListener('mousedown', () => { if (!over) document.getElementById('face').innerHTML = '&#128558;' })
+      cell.addEventListener('mouseup', () => { if (!over) document.getElementById('face').innerHTML = '&#128578;' })
+      board.appendChild(cell)
+    }
+  }
+
+  document.querySelectorAll('#controls button').forEach(b => b.classList.remove('active'))
+  if (r === 9) document.getElementById('b1').classList.add('active')
+  if (r === 16 && c === 16) document.getElementById('b2').classList.add('active')
+  if (r === 16 && c === 30) document.getElementById('b3').classList.add('active')
+}
+
+function place(sr, sc) {
+  let placed = 0
+  while (placed < total) {
+    const r = Math.floor(Math.random() * rows)
+    const c = Math.floor(Math.random() * cols)
+    if (grid[r][c] === -1) continue
+    if (Math.abs(r - sr) <= 1 && Math.abs(c - sc) <= 1) continue
+    grid[r][c] = -1; placed++
+  }
+  for (let i = 0; i < rows; i++)
+    for (let j = 0; j < cols; j++)
+      if (grid[i][j] !== -1) grid[i][j] = neighbors(i, j).filter(([r,c]) => grid[r][c] === -1).length
+}
+
+function neighbors(r, c) {
+  const out = []
+  for (let dr = -1; dr <= 1; dr++)
+    for (let dc = -1; dc <= 1; dc++) {
+      if (!dr && !dc) continue
+      const nr = r + dr, nc = c + dc
+      if (nr >= 0 && nr < rows && nc >= 0 && nc < cols) out.push([nr, nc])
+    }
+  return out
+}
+
+function cell(r, c) {
+  return document.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`)
+}
+
+function click(r, c) {
+  if (over || flags[r][c] || revealed[r][c]) return
+  if (first) { place(r, c); first = false }
+  if (!started) { started = true; timerID = setInterval(tick, 1000) }
+  if (grid[r][c] === -1) return lose(r, c)
+  reveal(r, c)
+  check()
+}
+
+function reveal(r, c) {
+  if (revealed[r][c] || flags[r][c]) return
+  revealed[r][c] = true
+  const el = cell(r, c)
+  el.classList.add('revealed')
+  if (grid[r][c] > 0) { el.textContent = grid[r][c]; el.classList.add('n' + grid[r][c]) }
+  if (grid[r][c] === 0) neighbors(r, c).forEach(([nr, nc]) => reveal(nr, nc))
+}
+
+function flag(r, c) {
+  if (over || revealed[r][c]) return
+  flags[r][c] = !flags[r][c]
+  const el = cell(r, c)
+  el.classList.toggle('flagged')
+  el.textContent = flags[r][c] ? '\u{1F6A9}' : ''
+  const rem = total - flags.flat().filter(Boolean).length
+  document.getElementById('mines').textContent = String(Math.max(rem, 0)).padStart(3, '0')
+}
+
+function lose(r, c) {
+  over = true; clearInterval(timerID)
+  document.getElementById('face').innerHTML = '&#128565;'
+  cell(r, c).classList.add('revealed', 'mine-hit')
+  cell(r, c).textContent = '\u{1F4A3}'
+  for (let i = 0; i < rows; i++)
+    for (let j = 0; j < cols; j++) {
+      if (grid[i][j] === -1 && !(i === r && j === c) && !flags[i][j]) {
+        const el = cell(i, j); el.classList.add('revealed'); el.textContent = '\u{1F4A3}'
+      }
+      if (flags[i][j] && grid[i][j] !== -1) {
+        const el = cell(i, j); el.classList.add('revealed'); el.textContent = '\u274C'
+      }
+    }
+}
+
+function check() {
+  let count = 0
+  for (let i = 0; i < rows; i++)
+    for (let j = 0; j < cols; j++)
+      if (revealed[i][j]) count++
+  if (count !== rows * cols - total) return
+  over = true; clearInterval(timerID)
+  document.getElementById('face').innerHTML = '&#128526;'
+  for (let i = 0; i < rows; i++)
+    for (let j = 0; j < cols; j++)
+      if (grid[i][j] === -1 && !flags[i][j]) { flags[i][j] = true; cell(i, j).textContent = '\u{1F6A9}'; cell(i, j).classList.add('flagged') }
+  document.getElementById('mines').textContent = '000'
+}
+
+function tick() {
+  seconds = Math.min(seconds + 1, 999)
+  document.getElementById('timer').textContent = String(seconds).padStart(3, '0')
+}
+
+init(9, 9, 10)
+</script>
+</body>
+</html>

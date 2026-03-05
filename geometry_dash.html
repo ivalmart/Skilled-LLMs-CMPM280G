@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Geometry Dash</title>
+<style>
+* { margin: 0; padding: 0; }
+body { background: #000; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; }
+canvas { display: block; image-rendering: pixelated; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+canvas.width = 900;
+canvas.height = 500;
+
+const GROUND = 380;
+const TILE = 40;
+const GRAVITY = 0.9;
+const JUMP_FORCE = -13;
+const SPEED = 6;
+const PLAYER_X = 120;
+
+const COLORS = {
+  bg: '#1a0a2e',
+  ground: '#2d1b69',
+  groundLine: '#7b2ff7',
+  player: '#00ff88',
+  playerGlow: 'rgba(0,255,136,0.3)',
+  spike: '#ff3366',
+  block: '#6633ff',
+  blockEdge: '#9966ff',
+  portal: '#ffcc00',
+  orb: '#00ccff',
+  orbGlow: 'rgba(0,204,255,0.4)',
+  pad: '#ff66cc',
+  text: '#ffffff',
+  particle: ['#00ff88', '#ff3366', '#ffcc00', '#00ccff', '#ff66cc']
+};
+
+// Level data: [x, type, height?]
+// types: 'spike', 'block', 'block2' (double), 'block3' (triple), 'gap', 'spike_floor', 'spike_pair'
+const LEVEL = [
+  // intro - easy jumps
+  [8, 'block'], [10, 'spike'], [13, 'block'], [14, 'block'],
+  [17, 'spike'], [18, 'spike'],
+  // section 2 - platforms
+  [22, 'block'], [23, 'block'], [24, 'block'], [25, 'spike_top'],
+  [28, 'block2'], [29, 'block2'],
+  [32, 'spike'], [33, 'spike'], [34, 'spike'],
+  // section 3 - mixed
+  [38, 'block'], [39, 'spike_top'], [40, 'block'],
+  [43, 'block2'], [44, 'block3'], [45, 'block2'],
+  [48, 'spike'], [49, 'block'], [50, 'spike'],
+  // section 4 - harder
+  [54, 'spike'], [55, 'spike'], [56, 'block'], [57, 'spike'], [58, 'spike'],
+  [62, 'block3'], [63, 'block3'], [64, 'spike_top'],
+  [67, 'orb'], [69, 'spike'], [70, 'spike'], [71, 'spike'],
+  // section 5 - intense
+  [75, 'block'], [76, 'spike'], [77, 'block'], [78, 'spike'], [79, 'block'],
+  [82, 'block2'], [83, 'spike_top'], [84, 'block2'],
+  [87, 'spike'], [88, 'spike'], [89, 'spike'], [90, 'spike'],
+  // section 6 - precision
+  [94, 'block'], [95, 'block3'],
+  [98, 'spike'], [99, 'block2'], [100, 'spike'],
+  [103, 'block'], [104, 'block'], [105, 'block'], [106, 'spike_top'],
+  [109, 'spike'], [110, 'spike'], [111, 'block'], [112, 'spike'], [113, 'spike'],
+  // section 7 - finale
+  [117, 'block3'], [118, 'spike'], [119, 'block3'], [120, 'spike'], [121, 'block3'],
+  [124, 'spike'], [125, 'spike'], [126, 'spike'], [127, 'spike'], [128, 'spike'],
+  [131, 'block'], [132, 'orb'],
+  [135, 'block2'], [136, 'block2'], [137, 'block2'], [138, 'block2'],
+  [140, 'end']
+];
+
+let player, camera, particles, dead, won, attempt, jumpHeld, startTime, bestProgress;
+
+function init() {
+  player = { x: PLAYER_X, y: GROUND - TILE, vy: 0, grounded: false, rotation: 0, jumps: 0 };
+  camera = 0;
+  particles = [];
+  dead = false;
+  won = false;
+  jumpHeld = false;
+  startTime = Date.now();
+  attempt = (attempt || 0) + 1;
+  bestProgress = bestProgress || 0;
+}
+
+init();
+attempt = 1;
+
+function levelEnd() {
+  let max = 0;
+  for (const [x] of LEVEL) { if (x > max) max = x; }
+  return max * TILE;
+}
+
+function obstacles() {
+  const out = [];
+  for (const [tileX, type] of LEVEL) {
+    const x = tileX * TILE;
+    if (type === 'spike') {
+      out.push({ x, y: GROUND - TILE, w: TILE, h: TILE, type: 'spike' });
+    }
+    if (type === 'spike_top') {
+      out.push({ x, y: GROUND - TILE * 2, w: TILE, h: TILE, type: 'spike' });
+      out.push({ x, y: GROUND - TILE, w: TILE, h: TILE, type: 'block' });
+    }
+    if (type === 'block') {
+      out.push({ x, y: GROUND - TILE, w: TILE, h: TILE, type: 'block' });
+    }
+    if (type === 'block2') {
+      out.push({ x, y: GROUND - TILE, w: TILE, h: TILE, type: 'block' });
+      out.push({ x, y: GROUND - TILE * 2, w: TILE, h: TILE, type: 'block' });
+    }
+    if (type === 'block3') {
+      out.push({ x, y: GROUND - TILE, w: TILE, h: TILE, type: 'block' });
+      out.push({ x, y: GROUND - TILE * 2, w: TILE, h: TILE, type: 'block' });
+      out.push({ x, y: GROUND - TILE * 3, w: TILE, h: TILE, type: 'block' });
+    }
+    if (type === 'orb') {
+      out.push({ x: x + 5, y: GROUND - TILE * 2, w: 30, h: 30, type: 'orb' });
+    }
+    if (type === 'end') {
+      out.push({ x, y: GROUND - TILE * 4, w: TILE, h: TILE * 4, type: 'end' });
+    }
+  }
+  return out;
+}
+
+const OBS = obstacles();
+
+function spawnParticles(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 8,
+      vy: (Math.random() - 0.5) * 8 - 2,
+      life: 30 + Math.random() * 20,
+      maxLife: 50,
+      size: 2 + Math.random() * 4,
+      color: color || COLORS.particle[Math.floor(Math.random() * COLORS.particle.length)]
+    });
+  }
+}
+
+function jump() {
+  if (dead || won) return;
+  if (player.grounded) {
+    player.vy = JUMP_FORCE;
+    player.grounded = false;
+    player.jumps++;
+    spawnParticles(player.x, player.y + TILE, COLORS.player, 5);
+  }
+}
+
+function collides(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+function spikeCollides(player, spike) {
+  const cx = spike.x + TILE / 2;
+  const cy = spike.y + TILE;
+  const shrink = 10;
+  const px = { x: player.x + shrink, y: player.y + shrink, w: TILE - shrink * 2, h: TILE - shrink * 2 };
+  // triangle tip collision
+  const triTop = spike.y + 4;
+  const triLeft = spike.x + 8;
+  const triRight = spike.x + TILE - 8;
+  const triBot = spike.y + TILE - 2;
+  return px.x < triRight && px.x + px.w > triLeft && px.y < triBot && px.y + px.h > triTop;
+}
+
+function die() {
+  dead = true;
+  spawnParticles(player.x + TILE / 2, player.y + TILE / 2, null, 30);
+}
+
+function update() {
+  if (dead || won) {
+    particles = particles.filter(p => { p.x += p.vx; p.y += p.vy; p.vy += 0.1; p.life--; return p.life > 0; });
+    return;
+  }
+
+  // movement
+  player.vy += GRAVITY;
+  player.y += player.vy;
+
+  // ground
+  player.grounded = false;
+  if (player.y >= GROUND - TILE) {
+    player.y = GROUND - TILE;
+    player.vy = 0;
+    player.grounded = true;
+  }
+
+  // block collision
+  const pb = { x: player.x, y: player.y, w: TILE, h: TILE };
+  for (const obs of OBS) {
+    if (obs.type === 'block') {
+      const sx = obs.x - camera;
+      if (sx < -TILE * 2 || sx > canvas.width + TILE) continue;
+      const ob = { x: obs.x, y: obs.y, w: obs.w, h: obs.h };
+      if (collides(pb, ob)) {
+        // land on top
+        if (player.vy > 0 && player.y + TILE - player.vy <= ob.y + 2) {
+          player.y = ob.y - TILE;
+          player.vy = 0;
+          player.grounded = true;
+        }
+        // hit side
+        else if (player.x + TILE > ob.x && player.x < ob.x) {
+          die();
+          return;
+        }
+      }
+    }
+    if (obs.type === 'spike') {
+      const sx = obs.x - camera;
+      if (sx < -TILE * 2 || sx > canvas.width + TILE) continue;
+      if (spikeCollides(pb, obs)) {
+        die();
+        return;
+      }
+    }
+    if (obs.type === 'orb') {
+      const sx = obs.x - camera;
+      if (sx < -TILE * 2 || sx > canvas.width + TILE) continue;
+      if (collides(pb, obs) && jumpHeld) {
+        player.vy = JUMP_FORCE * 1.2;
+        player.grounded = false;
+        spawnParticles(obs.x + 15, obs.y + 15, COLORS.orb, 10);
+      }
+    }
+    if (obs.type === 'end') {
+      if (collides(pb, obs)) {
+        won = true;
+        spawnParticles(player.x + TILE / 2, player.y + TILE / 2, COLORS.portal, 40);
+      }
+    }
+  }
+
+  // fall off
+  if (player.y > canvas.height) {
+    die();
+    return;
+  }
+
+  // rotation
+  if (!player.grounded) {
+    player.rotation += 5;
+  } else {
+    player.rotation = Math.round(player.rotation / 90) * 90;
+  }
+
+  // camera
+  camera += SPEED;
+  player.x = PLAYER_X + camera;
+
+  // trail particles
+  if (Math.random() < 0.3) {
+    spawnParticles(player.x, player.y + TILE, COLORS.player, 1);
+  }
+
+  // progress
+  const prog = camera / levelEnd();
+  if (prog > bestProgress) bestProgress = prog;
+
+  // update particles
+  particles = particles.filter(p => { p.x += p.vx; p.y += p.vy; p.vy += 0.05; p.life--; return p.life > 0; });
+}
+
+function drawBg() {
+  ctx.fillStyle = COLORS.bg;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // grid lines
+  ctx.strokeStyle = 'rgba(100,50,200,0.08)';
+  ctx.lineWidth = 1;
+  const offset = -(camera * 0.3) % TILE;
+  for (let x = offset; x < canvas.width; x += TILE) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, GROUND); ctx.stroke();
+  }
+  for (let y = 0; y < GROUND; y += TILE) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+  }
+}
+
+function drawGround() {
+  ctx.fillStyle = COLORS.ground;
+  ctx.fillRect(0, GROUND, canvas.width, canvas.height - GROUND);
+  ctx.strokeStyle = COLORS.groundLine;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(0, GROUND);
+  ctx.lineTo(canvas.width, GROUND);
+  ctx.stroke();
+
+  // ground grid
+  ctx.strokeStyle = 'rgba(123,47,247,0.2)';
+  ctx.lineWidth = 1;
+  const offset = -(camera % TILE);
+  for (let x = offset; x < canvas.width; x += TILE) {
+    ctx.beginPath(); ctx.moveTo(x, GROUND); ctx.lineTo(x, canvas.height); ctx.stroke();
+  }
+  for (let y = GROUND + TILE; y < canvas.height; y += TILE) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+  }
+}
+
+function drawSpike(x, y) {
+  ctx.fillStyle = COLORS.spike;
+  ctx.beginPath();
+  ctx.moveTo(x + TILE / 2, y + 2);
+  ctx.lineTo(x + TILE - 4, y + TILE);
+  ctx.lineTo(x + 4, y + TILE);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = '#ff6699';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+}
+
+function drawBlock(x, y) {
+  ctx.fillStyle = COLORS.block;
+  ctx.fillRect(x + 1, y + 1, TILE - 2, TILE - 2);
+  ctx.strokeStyle = COLORS.blockEdge;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x + 1, y + 1, TILE - 2, TILE - 2);
+
+  // inner detail
+  ctx.strokeStyle = 'rgba(153,102,255,0.3)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x + 6, y + 6, TILE - 12, TILE - 12);
+}
+
+function drawOrb(x, y) {
+  const cx = x + 15;
+  const cy = y + 15;
+  // glow
+  const glow = ctx.createRadialGradient(cx, cy, 5, cx, cy, 25);
+  glow.addColorStop(0, COLORS.orbGlow);
+  glow.addColorStop(1, 'transparent');
+  ctx.fillStyle = glow;
+  ctx.fillRect(x - 10, y - 10, 50, 50);
+  // orb
+  ctx.fillStyle = COLORS.orb;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 12, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#66eeff';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // inner
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(cx - 3, cy - 3, 4, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawEnd(x, y) {
+  const grad = ctx.createLinearGradient(x, y, x + TILE, y);
+  grad.addColorStop(0, 'rgba(255,204,0,0.8)');
+  grad.addColorStop(0.5, 'rgba(255,255,100,0.9)');
+  grad.addColorStop(1, 'rgba(255,204,0,0.8)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(x, y, TILE, GROUND - y);
+
+  // glow
+  const glow = ctx.createRadialGradient(x + TILE / 2, GROUND / 2, 10, x + TILE / 2, GROUND / 2, 100);
+  glow.addColorStop(0, 'rgba(255,255,200,0.3)');
+  glow.addColorStop(1, 'transparent');
+  ctx.fillStyle = glow;
+  ctx.fillRect(x - 80, y - 80, TILE + 160, GROUND - y + 160);
+}
+
+function drawPlayer() {
+  const sx = PLAYER_X;
+  const sy = player.y;
+
+  // glow
+  ctx.shadowColor = COLORS.player;
+  ctx.shadowBlur = 15;
+
+  ctx.save();
+  ctx.translate(sx + TILE / 2, sy + TILE / 2);
+  ctx.rotate(player.rotation * Math.PI / 180);
+
+  ctx.fillStyle = COLORS.player;
+  ctx.fillRect(-TILE / 2 + 2, -TILE / 2 + 2, TILE - 4, TILE - 4);
+
+  // icon
+  ctx.fillStyle = '#005533';
+  ctx.fillRect(-6, -6, 12, 12);
+  ctx.fillStyle = COLORS.player;
+  ctx.fillRect(-3, -3, 6, 6);
+
+  ctx.restore();
+  ctx.shadowBlur = 0;
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    const alpha = p.life / p.maxLife;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x - camera + PLAYER_X - player.x + camera, p.y, p.size, p.size);
+    // simpler: particles are in world coords, translate
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawParticlesScreen() {
+  for (const p of particles) {
+    const alpha = p.life / p.maxLife;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = p.color;
+    const sx = p.x - camera + PLAYER_X - (player.x - camera);
+    ctx.fillRect(sx, p.y, p.size, p.size);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawObstacles() {
+  for (const obs of OBS) {
+    const sx = obs.x - camera;
+    if (sx < -TILE * 2 || sx > canvas.width + TILE * 2) continue;
+
+    if (obs.type === 'spike') drawSpike(sx, obs.y);
+    if (obs.type === 'block') drawBlock(sx, obs.y);
+    if (obs.type === 'orb') drawOrb(sx, obs.y);
+    if (obs.type === 'end') drawEnd(sx, obs.y);
+  }
+}
+
+function drawHUD() {
+  const progress = Math.min(camera / levelEnd(), 1);
+
+  // progress bar
+  ctx.fillStyle = 'rgba(255,255,255,0.1)';
+  ctx.fillRect(canvas.width / 2 - 150, 15, 300, 8);
+  const grad = ctx.createLinearGradient(canvas.width / 2 - 150, 0, canvas.width / 2 + 150, 0);
+  grad.addColorStop(0, COLORS.player);
+  grad.addColorStop(1, COLORS.orb);
+  ctx.fillStyle = grad;
+  ctx.fillRect(canvas.width / 2 - 150, 15, 300 * progress, 8);
+  ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(canvas.width / 2 - 150, 15, 300, 8);
+
+  // percentage
+  ctx.fillStyle = COLORS.text;
+  ctx.font = '14px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(Math.floor(progress * 100) + '%', canvas.width / 2, 42);
+
+  // attempt
+  ctx.textAlign = 'left';
+  ctx.font = '12px monospace';
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.fillText('Attempt ' + attempt, 10, 25);
+}
+
+function drawDeath() {
+  ctx.fillStyle = 'rgba(255,0,0,0.15)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = COLORS.text;
+  ctx.font = 'bold 36px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('YOU CRASHED', canvas.width / 2, canvas.height / 2 - 20);
+
+  ctx.font = '16px monospace';
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.fillText(Math.floor((camera / levelEnd()) * 100) + '% complete', canvas.width / 2, canvas.height / 2 + 20);
+  ctx.fillText('Click or press Space to retry', canvas.width / 2, canvas.height / 2 + 50);
+}
+
+function drawWin() {
+  ctx.fillStyle = 'rgba(0,255,136,0.1)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = COLORS.player;
+  ctx.font = 'bold 42px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('LEVEL COMPLETE', canvas.width / 2, canvas.height / 2 - 30);
+
+  ctx.font = '18px monospace';
+  ctx.fillStyle = COLORS.text;
+  const time = ((Date.now() - startTime) / 1000).toFixed(1);
+  ctx.fillText('Time: ' + time + 's  |  Jumps: ' + player.jumps + '  |  Attempts: ' + attempt, canvas.width / 2, canvas.height / 2 + 15);
+
+  ctx.font = '14px monospace';
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.fillText('Click or press Space to play again', canvas.width / 2, canvas.height / 2 + 50);
+}
+
+function render() {
+  drawBg();
+  drawGround();
+  drawObstacles();
+  if (!dead) drawPlayer();
+  drawParticlesScreen();
+  drawHUD();
+  if (dead) drawDeath();
+  if (won) drawWin();
+}
+
+function loop() {
+  update();
+  render();
+  requestAnimationFrame(loop);
+}
+
+// input
+function onAction() {
+  if (dead || won) {
+    init();
+    return;
+  }
+  jump();
+}
+
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'ArrowUp') {
+    e.preventDefault();
+    jumpHeld = true;
+    onAction();
+  }
+});
+
+document.addEventListener('keyup', e => {
+  if (e.code === 'Space' || e.code === 'ArrowUp') {
+    jumpHeld = false;
+  }
+});
+
+canvas.addEventListener('mousedown', () => { jumpHeld = true; onAction(); });
+canvas.addEventListener('mouseup', () => { jumpHeld = false; });
+canvas.addEventListener('touchstart', e => { e.preventDefault(); jumpHeld = true; onAction(); });
+canvas.addEventListener('touchend', () => { jumpHeld = false; });
+
+loop();
+</script>
+</body>
+</html>
