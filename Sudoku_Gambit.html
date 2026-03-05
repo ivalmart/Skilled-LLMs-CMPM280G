@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sudoku Terminal</title>
+  <!-- Vibe-coded with Gambit v1.5 (https://bayleaf.chat/?model=gambit) -->
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0a0a0f;
+      color: #00ff88;
+      font-family: 'Courier New', monospace;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container { max-width: 900px; margin: 0 auto; }
+    h1 { 
+      text-align: center; 
+      margin-bottom: 10px;
+      text-shadow: 0 0 10px #00ff88;
+    }
+    .stats {
+      display: flex;
+      justify-content: center;
+      gap: 30px;
+      margin-bottom: 20px;
+      font-size: 14px;
+    }
+    .stat { 
+      background: #1a1a2e; 
+      padding: 8px 16px; 
+      border-radius: 4px;
+      border: 1px solid #00ff8855;
+    }
+    .stat-value { color: #fff; }
+    .game-area {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .board-container {
+      background: #1a1a2e;
+      padding: 15px;
+      border-radius: 8px;
+      border: 2px solid #00ff88;
+    }
+    .board {
+      display: grid;
+      grid-template-columns: repeat(9, 40px);
+      gap: 1px;
+      background: #00ff88;
+      border: 2px solid #00ff88;
+    }
+    .cell {
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0a0a0f;
+      font-size: 20px;
+      font-weight: bold;
+    }
+    .cell.given { color: #666; }
+    .cell.player { color: #00ff88; }
+    .cell.wrong { color: #ff4444; background: #2a0a0a; }
+    .cell.correct { color: #00ff88; background: #0a2a1a; }
+    .cell.highlight { background: #1a2a1a; }
+    /* Box borders */
+    .cell:nth-child(3n) { border-right: 2px solid #00ff88; }
+    .cell:nth-child(9n) { border-right: none; }
+    .cell:nth-child(n+19):nth-child(-n+27),
+    .cell:nth-child(n+46):nth-child(-n+54) {
+      border-bottom: 2px solid #00ff88;
+    }
+    .terminal {
+      flex: 1;
+      min-width: 300px;
+      max-width: 400px;
+      background: #0f0f1a;
+      border: 2px solid #00ff88;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .terminal-header {
+      background: #1a1a2e;
+      padding: 8px 12px;
+      font-size: 12px;
+      border-bottom: 1px solid #00ff8855;
+    }
+    .terminal-output {
+      height: 200px;
+      overflow-y: auto;
+      padding: 10px;
+      font-size: 13px;
+    }
+    .terminal-output::-webkit-scrollbar { width: 8px; }
+    .terminal-output::-webkit-scrollbar-track { background: #0a0a0f; }
+    .terminal-output::-webkit-scrollbar-thumb { background: #00ff8844; }
+    .msg { margin: 4px 0; }
+    .msg.ok { color: #00ff88; }
+    .msg.err { color: #ff4444; }
+    .msg.info { color: #8888ff; }
+    .msg.win { color: #ffff00; font-weight: bold; }
+    .terminal-input {
+      display: flex;
+      border-top: 1px solid #00ff8855;
+    }
+    .terminal-input input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: #00ff88;
+      font-family: inherit;
+      font-size: 14px;
+      padding: 12px;
+      outline: none;
+    }
+    .prompt {
+      padding: 12px 8px;
+      color: #00ff88;
+    }
+    .new-game-btn {
+      display: block;
+      margin: 20px auto;
+      background: #00ff88;
+      color: #0a0a0f;
+      border: none;
+      padding: 12px 24px;
+      font-family: inherit;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    .new-game-btn:hover { background: #00cc66; }
+    .difficulty-bar {
+      width: 100%;
+      height: 8px;
+      background: #1a1a2e;
+      border-radius: 4px;
+      margin-top: 5px;
+      overflow: hidden;
+    }
+    .difficulty-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #00ff88, #ffff00, #ff4444);
+      transition: width 0.5s;
+    }
+    .help {
+      margin-top: 15px;
+      font-size: 12px;
+      color: #666;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>SUDOKU TERMINAL v1.0</h1>
+    <div class="stats">
+      <div class="stat">Mistakes: <span class="stat-value" id="mistakes">0</span></div>
+      <div class="stat">Puzzles Solved: <span class="stat-value" id="solved">0</span></div>
+      <div class="stat">Difficulty: <span class="stat-value" id="difficulty">1</span>
+        <div class="difficulty-bar"><div class="difficulty-fill" id="diff-fill" style="width:10%"></div></div>
+      </div>
+    </div>
+    <div class="game-area">
+      <div class="board-container">
+        <div class="board" id="board"></div>
+      </div>
+      <div class="terminal">
+        <div class="terminal-header">SUDOKU INPUT TERMINAL</div>
+        <div class="terminal-output" id="output"></div>
+        <div class="terminal-input">
+          <span class="prompt">&gt;</span>
+          <input type="text" id="input" placeholder="row,col,number (e.g. 3,5,7)" autofocus>
+        </div>
+      </div>
+    </div>
+    <button class="new-game-btn" onclick="newGame()">NEW PUZZLE</button>
+    <div class="help">Format: row,column,number (1-9) | Type 'hint' for help | 'clear' to reset cell</div>
+  </div>
+
+<script>
+// === DESIGN CONSTANTS (tweak these!) ===
+const INITIAL_DIFFICULTY = 1;      // Start easy
+const MAX_DIFFICULTY = 10;         // Hardest level
+const MISTAKES_TO_HARDER = 5;      // Mistakes before difficulty drops
+const SOLVES_TO_EASIER = 2;        // Solves before difficulty rises
+const BASE_GIVENS = 50;            // Cells given at difficulty 1
+const GIVENS_PER_LEVEL = 4;        // Fewer givens per difficulty level
+
+// === GAME STATE ===
+let puzzle = [];        // Current puzzle (0 = empty)
+let solution = [];      // Full solution
+let playerGrid = [];    // Player's entries
+let mistakes = 0;
+let totalMistakes = 0;
+let puzzlesSolved = 0;
+let difficulty = INITIAL_DIFFICULTY;
+let selectedCell = null;
+
+// === SUDOKU GENERATION ===
+// Design question: Is simple shuffle-fill sufficient for prototype?
+function generateSolution() {
+  const grid = Array(9).fill(null).map(() => Array(9).fill(0));
+  
+  // Fill diagonal boxes first (they're independent)
+  for (let box = 0; box < 9; box += 3) {
+    fillBox(grid, box, box);
+  }
+  // Solve the rest
+  solveSudoku(grid);
+  return grid;
+}
+
+function fillBox(grid, row, col) {
+  const nums = shuffle([1,2,3,4,5,6,7,8,9]);
+  let idx = 0;
+  for (let i = 0; i < 3; i++) {
+    for (let j = 0; j < 3; j++) {
+      grid[row + i][col + j] = nums[idx++];
+    }
+  }
+}
+
+function solveSudoku(grid) {
+  const empty = findEmpty(grid);
+  if (!empty) return true;
+  const [row, col] = empty;
+  
+  for (const num of shuffle([1,2,3,4,5,6,7,8,9])) {
+    if (isValid(grid, row, col, num)) {
+      grid[row][col] = num;
+      if (solveSudoku(grid)) return true;
+      grid[row][col] = 0;
+    }
+  }
+  return false;
+}
+
+function findEmpty(grid) {
+  for (let i = 0; i < 9; i++) {
+    for (let j = 0; j < 9; j++) {
+      if (grid[i][j] === 0) return [i, j];
+    }
+  }
+  return null;
+}
+
+function isValid(grid, row, col, num) {
+  // Check row
+  if (grid[row].includes(num)) return false;
+  // Check column
+  if (grid.some(r => r[col] === num)) return false;
+  // Check box
+  const boxRow = Math.floor(row / 3) * 3;
+  const boxCol = Math.floor(col / 3) * 3;
+  for (let i = 0; i < 3; i++) {
+    for (let j = 0; j < 3; j++) {
+      if (grid[boxRow + i][boxCol + j] === num) return false;
+    }
+  }
+  return true;
+}
+
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function createPuzzle(solution, difficulty) {
+  // Calculate givens based on difficulty
+  const givens = Math.max(17, BASE_GIVENS - (difficulty - 1) * GIVENS_PER_LEVEL);
+  
+  const puzzle = solution.map(row => [...row]);
+  const positions = [];
+  for (let i = 0; i < 81; i++) positions.push(i);
+  shuffle(positions);
+  
+  const toRemove = 81 - givens;
+  for (let i = 0; i < toRemove; i++) {
+    const pos = positions[i];
+    const row = Math.floor(pos / 9);
+    const col = pos % 9;
+    puzzle[row][col] = 0;
+  }
+  return puzzle;
+}
+
+// === RENDERING ===
+function renderBoard() {
+  const board = document.getElementById('board');
+  board.innerHTML = '';
+  
+  for (let i = 0; i < 9; i++) {
+    for (let j = 0; j < 9; j++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.dataset.row = i;
+      cell.dataset.col = j;
+      
+      if (puzzle[i][j] !== 0) {
+        cell.textContent = puzzle[i][j];
+        cell.classList.add('given');
+      } else if (playerGrid[i][j] !== 0) {
+        cell.textContent = playerGrid[i][j];
+        cell.classList.add('player');
+      }
+      
+      cell.addEventListener('click', () => selectCell(i, j));
+      board.appendChild(cell);
+    }
+  }
+}
+
+function selectCell(row, col) {
+  // Clear previous highlight
+  document.querySelectorAll('.cell.highlight').forEach(c => c.classList.remove('highlight'));
+  
+  if (puzzle[row][col] === 0) {  // Can only select empty cells
+    selectedCell = { row, col };
+    const idx = row * 9 + col;
+    document.querySelectorAll('.cell')[idx].classList.add('highlight');
+    log(`Selected cell (${row + 1}, ${col + 1})`, 'info');
+  }
+}
+
+function updateCell(row, col, num, status) {
+  const idx = row * 9 + col;
+  const cell = document.querySelectorAll('.cell')[idx];
+  
+  cell.textContent = num || '';
+  cell.classList.remove('player', 'correct', 'wrong');
+  
+  if (status === 'correct') {
+    cell.classList.add('correct');
+  } else if (status === 'wrong') {
+    cell.classList.add('wrong');
+  } else if (num) {
+    cell.classList.add('player');
+  }
+}
+
+// === TERMINAL OUTPUT ===
+function log(msg, type = '') {
+  const output = document.getElementById('output');
+  const line = document.createElement('div');
+  line.className = `msg ${type}`;
+  line.textContent = msg;
+  output.appendChild(line);
+  output.scrollTop = output.scrollHeight;
+}
+
+function clearOutput() {
+  document.getElementById('output').innerHTML = '';
+}
+
+// === INPUT HANDLING ===
+function parseInput(input) {
+  input = input.trim().toLowerCase();
+  
+  if (input === 'hint') {
+    log('--- HELP ---', 'info');
+    log('Format: row,column,number', 'info');
+    log('Example: 3,5,7 puts 7 in row 3, column 5', 'info');
+    log('Use "clear" as number to erase: 3,5,clear', 'info');
+    log('Click a cell to select it, then just type the number', 'info');
+    return null;
+  }
+  
+  // Quick number entry if cell selected
+  if (selectedCell && /^\d$/.test(input)) {
+    return { row: selectedCell.row, col: selectedCell.col, num: parseInt(input) };
+  }
+  
+  // Quick clear if cell selected
+  if (selectedCell && input === 'clear') {
+    return { row: selectedCell.row, col: selectedCell.col, num: 0 };
+  }
+  
+  // Full format: row,col,num
+  const match = input.match(/^(\d)\s*,\s*(\d)\s*,\s*(\d|clear)$/);
+  if (match) {
+    const row = parseInt(match[1]) - 1;
+    const col = parseInt(match[2]) - 1;
+    const num = match[3] === 'clear' ? 0 : parseInt(match[3]);
+    return { row, col, num };
+  }
+  
+  log(`Invalid format: "${input}"`, 'err');
+  log('Use: row,col,number (e.g. 3,5,7)', 'err');
+  return null;
+}
+
+function processInput(inputStr) {
+  const parsed = parseInput(inputStr);
+  if (!parsed) return;
+  
+  const { row, col, num } = parsed;
+  
+  // Validate bounds
+  if (row < 0 || row > 8 || col < 0 || col > 8) {
+    log('Row and column must be 1-9', 'err');
+    return;
+  }
+  
+  // Check if it's a given cell
+  if (puzzle[row][col] !== 0) {
+    log(`Cell (${row+1},${col+1}) is a given number!`, 'err');
+    return;
+  }
+  
+  // Clearing a cell
+  if (num === 0) {
+    playerGrid[row][col] = 0;
+    updateCell(row, col, 0);
+    log(`Cleared cell (${row+1},${col+1})`, 'ok');
+    selectedCell = null;
+    document.querySelectorAll('.cell.highlight').forEach(c => c.classList.remove('highlight'));
+    return;
+  }
+  
+  // Validate number
+  if (num < 1 || num > 9) {
+    log('Number must be 1-9', 'err');
+    return;
+  }
+  
+  // === THE CRITICAL FEEDBACK ===
+  // Design question: Is immediate rejection too punishing?
+  const correct = solution[row][col];
+  
+  if (num === correct) {
+    playerGrid[row][col] = num;
+    updateCell(row, col, num, 'correct');
+    log(`✓ Correct! (${row+1},${col+1}) = ${num}`, 'ok');
+    
+    // Check win
+    if (checkWin()) {
+      puzzlesSolved++;
+      log('═══════════════════════', 'win');
+      log('  PUZZLE COMPLETE! 🎉', 'win');
+      log('═══════════════════════', 'win');
+      adjustDifficulty('win');
+    }
+  } else {
+    mistakes++;
+    totalMistakes++;
+    updateCell(row, col, num, 'wrong');
+    
+    // Give hint about what's wrong
+    const conflict = findConflict(row, col, num);
+    log(`✗ REJECTED: ${num} in (${row+1},${col+1})`, 'err');
+    log(`  → ${conflict}`, 'err');
+    
+    updateStats();
+    
+    // Adjust difficulty after mistakes
+    if (mistakes >= MISTAKES_TO_HARDER) {
+      adjustDifficulty('mistakes');
+      mistakes = 0;
+    }
+  }
+  
+  selectedCell = null;
+  document.querySelectorAll('.cell.highlight').forEach(c => c.classList.remove('highlight'));
+}
+
+function findConflict(row, col, num) {
+  // Check row
+  for (let j = 0; j < 9; j++) {
+    if (j !== col && (puzzle[row][j] === num || playerGrid[row][j] === num)) {
+      return `${num} already in row ${row+1}`;
+    }
+  }
+  // Check column
+  for (let i = 0; i < 9; i++) {
+    if (i !== row && (puzzle[i][col] === num || playerGrid[i][col] === num)) {
+      return `${num} already in column ${col+1}`;
+    }
+  }
+  // Check box
+  const boxRow = Math.floor(row / 3) * 3;
+  const boxCol = Math.floor(col / 3) * 3;
+  for (let i = 0; i < 3; i++) {
+    for (let j = 0; j < 3; j++) {
+      const r = boxRow + i, c = boxCol + j;
+      if ((r !== row || c !== col) && (puzzle[r][c] === num || playerGrid[r][c] === num)) {
+        return `${num} already in this 3×3 box`;
+      }
+    }
+  }
+  return `Wrong number (hint: try another)`;
+}
+
+function checkWin() {
+  for (let i = 0; i < 9; i++) {
+    for (let j = 0; j < 9; j++) {
+      if (puzzle[i][j] === 0 && playerGrid[i][j] !== solution[i][j]) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+function adjustDifficulty(event) {
+  if (event === 'win') {
+    if (puzzlesSolved % SOLVES_TO_EASIER === 0 && difficulty < MAX_DIFFICULTY) {
+      difficulty++;
+      log(`⬆ Difficulty increased to ${difficulty}`, 'info');
+    }
+  } else if (event === 'mistakes') {
+    if (difficulty > 1) {
+      difficulty--;
+      log(`⬇ Difficulty decreased to ${difficulty}`, 'info');
+    }
+  }
+  updateStats();
+}
+
+function updateStats() {
+  document.getElementById('mistakes').textContent = totalMistakes;
+  document.getElementById('solved').textContent = puzzlesSolved;
+  document.getElementById('difficulty').textContent = difficulty;
+  document.getElementById('diff-fill').style.width = `${difficulty * 10}%`;
+}
+
+// === GAME INIT ===
+function newGame() {
+  solution = generateSolution();
+  puzzle = createPuzzle(solution, difficulty);
+  playerGrid = Array(9).fill(null).map(() => Array(9).fill(0));
+  mistakes = 0;
+  selectedCell = null;
+  
+  clearOutput();
+  log('═══════════════════════', 'info');
+  log('  NEW PUZZLE GENERATED', 'info');
+  log(`  Difficulty: ${difficulty}`, 'info');
+  log(`  Givens: ${81 - countEmpty(puzzle)}`, 'info');
+  log('═══════════════════════', 'info');
+  log('Enter: row,col,number', 'info');
+  log('Or click a cell, then type number', 'info');
+  
+  renderBoard();
+}
+
+function countEmpty(grid) {
+  return grid.flat().filter(x => x === 0).length;
+}
+
+// === EVENT LISTENERS ===
+document.getElementById('input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    const input = e.target.value;
+    if (input.trim()) {
+      processInput(input);
+      e.target.value = '';
+    }
+  }
+});
+
+// Keyboard shortcuts for selected cell
+document.addEventListener('keydown', (e) => {
+  if (selectedCell && /^\d$/.test(e.key)) {
+    const input = document.getElementById('input');
+    if (document.activeElement !== input) {
+      processInput(e.key);
+    }
+  }
+  if (selectedCell && e.key === 'Backspace') {
+    const input = document.getElementById('input');
+    if (document.activeElement !== input) {
+      processInput('clear');
+    }
+  }
+});
+
+// Start game
+newGame();
+</script>
+</body>
+</html>
